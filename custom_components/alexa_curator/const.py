@@ -28,6 +28,9 @@ MAX_REMOVALS = 5
 # Debug service names.
 SERVICE_RECONCILE = "reconcile"  # force an apply now
 SERVICE_PREVIEW = "preview"  # dry-run: log/notify the diff, change nothing
+# Experimental (Alexa Room Sync): read-only proof that the alexa_media_player
+# piggyback works — lists the account's Alexa rooms. No writes.
+SERVICE_ALEXA_ROOMS = "alexa_rooms"
 
 # ── The opinionated exposure policy (docs/alexa.md tiers) ─────────────────────
 # Decisions are made per DOMAIN (the part of an entity_id before the dot), then

@@ -14,3 +14,7 @@ reconcile:
 preview:
   name: Preview Alexa exposure changes
   description: Dry run — compute what would be exposed/unexposed to Alexa and report it (log + a notification) without changing anything. Use this before the first apply to confirm it's a near-no-op against your current set.
+
+alexa_rooms:
+  name: List Alexa rooms (experimental)
+  description: EXPERIMENTAL, read-only — lists the account's Alexa device groups (rooms) by borrowing the Alexa Media Player integration's session. Proves the Room Sync piggyback works. Requires Alexa Media Player installed and logged in. Makes no changes.

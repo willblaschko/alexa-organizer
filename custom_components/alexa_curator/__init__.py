@@ -21,6 +21,7 @@ from .const import (
     DEBOUNCE_SECONDS,
     DOMAIN,
     MAX_REMOVALS,
+    SERVICE_ALEXA_ROOMS,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
 )
@@ -28,7 +29,7 @@ from .panel import async_register_panel, async_unregister_panel
 
 _LOGGER = logging.getLogger(__name__)
 
-_ALL_SERVICES = (SERVICE_RECONCILE, SERVICE_PREVIEW)
+_ALL_SERVICES = (SERVICE_RECONCILE, SERVICE_PREVIEW, SERVICE_ALEXA_ROOMS)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -110,6 +111,39 @@ def _register_services(hass: HomeAssistant) -> None:
             notification_id="alexa_curator_preview",
         )
 
+    async def alexa_rooms(_call: ServiceCall) -> None:
+        # EXPERIMENTAL read-only: prove the alexa_media_player piggyback by listing
+        # the account's Alexa rooms. No writes.
+        from . import alexa_cloud
+
+        from homeassistant.components import persistent_notification
+
+        try:
+            groups = await alexa_cloud.async_list_groups(hass)
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            persistent_notification.async_create(
+                hass,
+                f"Alexa Room Sync (experimental) couldn't reach Alexa: {err}. "
+                "It needs the Alexa Media Player integration installed and logged in.",
+                title="Alexa Curator — Alexa rooms",
+                notification_id="alexa_curator_rooms",
+            )
+            return
+
+        def _name(g: dict) -> str:
+            return ((g.get("friendlyName") or {}).get("value") or {}).get("text", "(unnamed)")
+
+        def _count(g: dict) -> int:
+            return len((g.get("memberDevices") or {}).get("items") or [])
+
+        lines = sorted(f"• {_name(g)} — {_count(g)} device(s)" for g in groups)
+        persistent_notification.async_create(
+            hass,
+            f"{len(groups)} Alexa rooms (read-only, via Alexa Media Player):\n" + "\n".join(lines),
+            title="Alexa Curator — Alexa rooms",
+            notification_id="alexa_curator_rooms",
+        )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_RECONCILE,
@@ -117,3 +151,4 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({vol.Optional("max_removals"): vol.All(vol.Coerce(int), vol.Range(min=0))}),
     )
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW, preview)
+    hass.services.async_register(DOMAIN, SERVICE_ALEXA_ROOMS, alexa_rooms)

@@ -4,7 +4,7 @@
   "codeowners": ["@willblaschko"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "websocket_api"],
-  "after_dependencies": ["cloud"],
+  "after_dependencies": ["cloud", "alexa_media"],
   "documentation": "https://github.com/willblaschko/alexa-curator",
   "integration_type": "hub",
   "iot_class": "calculated",
