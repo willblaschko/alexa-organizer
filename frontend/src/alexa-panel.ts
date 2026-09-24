@@ -885,14 +885,17 @@ export class AlexaPanel extends LitElement {
     }
     .deltabar {
       position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: auto;
+      max-width: min(720px, calc(100% - 24px));
       z-index: 20;
       overflow: hidden;
       background: var(--card-background-color, #fff);
-      border-top: 1px solid var(--divider-color, #ddd);
-      box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.14);
+      border: 1px solid var(--divider-color, #ddd);
+      border-radius: 14px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
     }
     .deltabar .flare {
       position: absolute;
@@ -928,11 +931,8 @@ export class AlexaPanel extends LitElement {
       position: relative;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 12px 16px;
+      gap: 14px;
+      padding: 10px 14px;
     }
     .delta-count {
       font-weight: 600;
@@ -943,11 +943,9 @@ export class AlexaPanel extends LitElement {
     }
     .deltadetails {
       position: relative;
-      max-width: 900px;
-      margin: 0 auto;
       max-height: 42vh;
       overflow-y: auto;
-      padding: 4px 16px 12px;
+      padding: 6px 14px 12px;
       border-top: 1px solid var(--divider-color, #eee);
     }
     .dline {
