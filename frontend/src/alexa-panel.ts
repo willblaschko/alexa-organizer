@@ -32,23 +32,24 @@ interface Inventory {
   unavailable?: string;
 }
 
-// Friendly, ordered domain headings. Anything not listed falls to the bottom under
-// its raw domain name.
-const DOMAIN_LABELS: Record<string, string> = {
-  media_player: "Speakers & media",
-  light: "Lights",
-  switch: "Switches",
+// Short per-row kind chips (rows are grouped by ROOM, so the domain is a tag, not a
+// heading). DOMAIN_ORDER also sets the within-room sort (speakers, then lights, …).
+const DOMAIN_CHIP: Record<string, string> = {
+  media_player: "Speaker",
+  light: "Light",
+  switch: "Switch",
   climate: "Climate",
-  scene: "Scenes",
-  script: "Scripts (voice scenes)",
-  cover: "Covers",
-  fan: "Fans",
-  vacuum: "Vacuums",
-  lock: "Locks",
-  camera: "Cameras",
-  input_boolean: "Toggles",
+  scene: "Scene",
+  script: "Script",
+  cover: "Cover",
+  fan: "Fan",
+  vacuum: "Vacuum",
+  lock: "Lock",
+  camera: "Camera",
+  input_boolean: "Toggle",
 };
-const DOMAIN_ORDER = Object.keys(DOMAIN_LABELS);
+const DOMAIN_ORDER = Object.keys(DOMAIN_CHIP);
+const NO_ROOM = "No room";
 
 @customElement("alexa-panel")
 export class AlexaPanel extends LitElement {
@@ -120,21 +121,33 @@ export class AlexaPanel extends LitElement {
     return s.expose + s.live_remove + s.ghost_remove === 0;
   }
 
-  private _groups(): Array<{ domain: string; label: string; rows: Row[] }> {
-    const byDomain = new Map<string, Row[]>();
+  // Group rows by HA Area — a 1:1 mirror of the rooms in Home Assistant. Entities
+  // with no area fall into a "No room" section (sorted last); within each room, rows
+  // are ordered by kind (speakers, lights, …) then name.
+  private _rooms(): Array<{ area: string; rows: Row[] }> {
+    const rank = (d: string) => {
+      const i = DOMAIN_ORDER.indexOf(d);
+      return i < 0 ? 99 : i;
+    };
+    const byArea = new Map<string, Row[]>();
     for (const r of this._rows) {
       if (r.ghost) continue;
-      (byDomain.get(r.domain) ?? byDomain.set(r.domain, []).get(r.domain)!).push(r);
+      const key = r.area ?? "";
+      const arr = byArea.get(key);
+      if (arr) arr.push(r);
+      else byArea.set(key, [r]);
     }
-    const domains = [...byDomain.keys()].sort((a, b) => {
-      const ia = DOMAIN_ORDER.indexOf(a);
-      const ib = DOMAIN_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    const areas = [...byArea.keys()].sort((a, b) => {
+      if (a === "") return 1; // "No room" last
+      if (b === "") return -1;
+      return a.localeCompare(b);
     });
-    return domains.map((d) => ({
-      domain: d,
-      label: DOMAIN_LABELS[d] ?? d,
-      rows: byDomain.get(d)!,
+    return areas.map((a) => ({
+      area: a === "" ? NO_ROOM : a,
+      rows: byArea
+        .get(a)!
+        .slice()
+        .sort((x, y) => rank(x.domain) - rank(y.domain) || x.name.localeCompare(y.name)),
     }));
   }
 
@@ -153,8 +166,8 @@ export class AlexaPanel extends LitElement {
           <div class="titles">
             <h1>Alexa Curator</h1>
             <p class="sub">
-              What Home Assistant exposes to Alexa. Organize rooms &amp; groups in the Alexa
-              app — this controls the device list, not the layout.
+              Grouped by your Home Assistant areas. Controls what Alexa sees — organize the
+              actual rooms &amp; groups in the Alexa app.
             </p>
           </div>
           <div class="actions">
@@ -186,10 +199,10 @@ export class AlexaPanel extends LitElement {
             </div>`
           : nothing}
 
-        ${this._groups().map(
+        ${this._rooms().map(
           (g) => html`
             <section>
-              <h2>${g.label} <span class="count">${g.rows.length}</span></h2>
+              <h2>${g.area} <span class="count">${g.rows.length}</span></h2>
               <div class="rows">${g.rows.map((r) => this._row(r))}</div>
             </section>
           `
@@ -209,7 +222,7 @@ export class AlexaPanel extends LitElement {
             ${pending ? html`<span class="dot" title="pending"></span>` : nothing}
           </div>
           <div class="meta">
-            ${r.area ? html`<span class="area">${r.area}</span> · ` : nothing}
+            <span class="kind">${DOMAIN_CHIP[r.domain] ?? r.domain}</span>
             <span class="reason ${r.overridden ? "label" : ""}">${r.reason}</span>
           </div>
         </div>
@@ -408,8 +421,18 @@ export class AlexaPanel extends LitElement {
       color: var(--secondary-text-color, #727272);
       margin-top: 2px;
     }
-    .area {
-      font-weight: 500;
+    .kind {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1px 6px;
+      margin-right: 6px;
+      border-radius: 4px;
+      background: var(--divider-color, #e8e8e8);
+      color: var(--secondary-text-color, #616161);
+      vertical-align: 1px;
     }
     .reason.label {
       color: var(--primary-color, #0288d1);
