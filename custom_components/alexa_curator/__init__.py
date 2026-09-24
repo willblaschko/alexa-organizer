@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import area_registry as ar, entity_registry as er
@@ -18,6 +20,7 @@ from . import engine, exposure
 from .const import (
     DEBOUNCE_SECONDS,
     DOMAIN,
+    MAX_REMOVALS,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
 )
@@ -80,9 +83,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _register_services(hass: HomeAssistant) -> None:
-    async def reconcile(_call: ServiceCall) -> None:
+    async def reconcile(call: ServiceCall) -> None:
+        # Optional one-shot override of the live-removal guard, for the initial
+        # cleanup after you've reviewed a preview. Steady-state stays at the safe
+        # default (MAX_REMOVALS).
+        max_removals = call.data.get("max_removals", MAX_REMOVALS)
         try:
-            await engine.async_reconcile(hass)
+            await engine.async_reconcile(hass, max_removals=max_removals)
         except exposure.ExposureUnavailable:
             pass
 
@@ -100,5 +107,10 @@ def _register_services(hass: HomeAssistant) -> None:
             notification_id="alexa_curator_preview",
         )
 
-    hass.services.async_register(DOMAIN, SERVICE_RECONCILE, reconcile)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RECONCILE,
+        reconcile,
+        schema=vol.Schema({vol.Optional("max_removals"): vol.All(vol.Coerce(int), vol.Range(min=0))}),
+    )
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW, preview)

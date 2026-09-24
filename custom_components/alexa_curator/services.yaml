@@ -1,6 +1,15 @@
 reconcile:
   name: Reconcile Alexa exposure
-  description: Recompute the desired Alexa-exposed set from the policy and apply the difference now (respects the fail-safe: a large removal is held, not applied).
+  description: Recompute the desired Alexa-exposed set from the policy and apply the difference now. Stale/ghost records are always cleaned; a large number of LIVE removals is held by the fail-safe unless you raise max_removals for this run.
+  fields:
+    max_removals:
+      name: Max live removals (this run)
+      description: One-shot override of the safety threshold on removing entities that still exist. Use a high value for the initial cleanup after reviewing a preview; omit for the safe default.
+      example: 50
+      selector:
+        number:
+          min: 0
+          max: 1000
 
 preview:
   name: Preview Alexa exposure changes

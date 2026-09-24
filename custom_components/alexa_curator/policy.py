@@ -2,9 +2,14 @@
 
 `decide(...)` is PURE (primitive args, no `homeassistant` import) so the tier
 logic is unit-tested without a running HA. `desired_exposure(hass)` is the thin
-HA-facing wrapper that reads the entity/area/device registries and calls
+HA-facing wrapper that reads the entity/area/device/label registries and calls
 `decide` per entity; its `homeassistant` imports are lazy (inside the function)
 so this module imports cleanly on the test runner's flat path too.
+
+Membership is rule-based per domain. The only per-entity mechanism is HA LABELS:
+an entity tagged EXPOSE_LABEL is force-exposed (how voice-scene scripts / voice
+helpers opt in), one tagged HIDE_LABEL is force-excluded. No entity_id lists —
+nothing to go stale when ids churn.
 """
 from __future__ import annotations
 
@@ -12,61 +17,55 @@ from __future__ import annotations
 # when the test runner puts the package dir on sys.path and imports us flat.
 try:  # pragma: no cover - trivial import plumbing
     from .const import (
-        EXTRA_ALLOW,
-        EXTRA_DENY,
-        LIGHT_DOMAIN,
+        AREA_SCOPED_DOMAINS,
+        EXPOSE_LABEL,
+        HIDE_LABEL,
         TIER1_DOMAINS,
-        VOICE_SCRIPT_ALLOWLIST,
     )
 except ImportError:  # pragma: no cover
     from const import (  # type: ignore[no-redef]
-        EXTRA_ALLOW,
-        EXTRA_DENY,
-        LIGHT_DOMAIN,
+        AREA_SCOPED_DOMAINS,
+        EXPOSE_LABEL,
+        HIDE_LABEL,
         TIER1_DOMAINS,
-        VOICE_SCRIPT_ALLOWLIST,
     )
 
 
 def decide(
     *,
-    entity_id: str,
     domain: str,
     has_area: bool,
     hidden: bool,
     has_entity_category: bool,
+    force_expose: bool,
+    force_hide: bool,
 ) -> bool:
     """Return True if this entity should be exposed to Alexa.
 
-    Order matters: explicit per-entity overrides win, then the universal
-    "never expose hidden / config / diagnostic" rule, then the domain tiers.
+    Order matters: a HIDE label is an absolute kill switch; then an EXPOSE label
+    force-includes; then the universal "never expose hidden / config / diagnostic"
+    rule; then the domain rules.
     """
-    # Per-entity overrides (the documented allowlist/denylist).
-    if entity_id in EXTRA_DENY:
+    if force_hide:
         return False
-    if entity_id in EXTRA_ALLOW:
+    if force_expose:
         return True
 
-    # Hidden entities, and config/diagnostic ones (entity_category set), are
-    # never voice targets.
+    # Hidden entities, and config/diagnostic ones (entity_category set), are never
+    # voice targets.
     if hidden or has_entity_category:
         return False
 
-    # Lights: Phase 1 exposes an individual bulb only if it belongs to an area
-    # (a room-scoped target). The per-area light-GROUP opinion is Phase 3.
-    if domain == LIGHT_DOMAIN:
+    # Lights and switches must be room-scoped (have an area) — that's what makes a
+    # clean "turn on the <room> lights" target and drops area-less junk.
+    if domain in AREA_SCOPED_DOMAINS:
         return has_area
 
     # Tier 1 domains expose directly.
     if domain in TIER1_DOMAINS:
         return True
 
-    # Scripts expose only when tagged a "voice scene" (Phase 1: the allowlist).
-    if domain == "script":
-        return entity_id in VOICE_SCRIPT_ALLOWLIST
-
-    # Everything else (Tier 2 off-by-default, Tier 3 never) stays hidden until a
-    # future UI toggle or an EXTRA_ALLOW entry opts it in.
+    # Everything else stays hidden unless force-labelled above.
     return False
 
 
@@ -74,15 +73,24 @@ def desired_exposure(hass) -> set[str]:
     """Compute the set of entity_ids that SHOULD be exposed to Alexa right now.
 
     Reads the entity registry (and each entity's effective area, inherited from
-    its device when the entity itself has none) and applies `decide`.
+    its device when the entity itself has none) plus the label registry, and
+    applies `decide`.
     """
     from homeassistant.helpers import (  # lazy — keeps this module HA-free at import
         device_registry as dr,
         entity_registry as er,
+        label_registry as lr,
     )
 
     ent_reg = er.async_get(hass)
     dev_reg = dr.async_get(hass)
+    label_reg = lr.async_get(hass)
+
+    # Resolve our label NAMES (case-insensitive) to their label_ids, since
+    # entity_registry entries carry label_ids, not names.
+    name_to_id = {lbl.name.lower(): lbl.label_id for lbl in label_reg.labels.values()}
+    expose_id = name_to_id.get(EXPOSE_LABEL.lower())
+    hide_id = name_to_id.get(HIDE_LABEL.lower())
 
     desired: set[str] = set()
     for entry in ent_reg.entities.values():
@@ -95,13 +103,31 @@ def desired_exposure(hass) -> set[str]:
             if device is not None:
                 area_id = device.area_id
 
+        labels = entry.labels or set()
         if decide(
-            entity_id=entry.entity_id,
             domain=entry.domain,
             has_area=area_id is not None,
             hidden=entry.hidden_by is not None,
             has_entity_category=entry.entity_category is not None,
+            force_expose=expose_id is not None and expose_id in labels,
+            force_hide=hide_id is not None and hide_id in labels,
         ):
             desired.add(entry.entity_id)
 
     return desired
+
+
+def live_entity_ids(hass) -> set[str]:
+    """Every entity_id that STILL EXISTS in HA (registry entries + state machine).
+
+    Used by the engine's ghost-aware guard: a removal of an entity_id that isn't
+    live is a stale exposure record (Sonos re-discovery churn leaves these), and
+    cleaning it can't break an Alexa Group — so it must never count against the
+    stability threshold the way removing a real speaker does.
+    """
+    from homeassistant.helpers import entity_registry as er  # lazy
+
+    ent_reg = er.async_get(hass)
+    live = {e.entity_id for e in ent_reg.entities.values() if e.disabled_by is None}
+    live.update(hass.states.async_entity_ids())  # non-registry (e.g. template) entities
+    return live

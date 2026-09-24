@@ -53,16 +53,38 @@ Alexa Curator is built around never causing that:
 
 ## The policy (Phase 1)
 
+Membership is **rules, not lists** — nothing to go stale when entity_ids churn:
+
 | Tier | Domains | Exposed? |
 |---|---|---|
-| **1** | `media_player` (room speakers), `light` (with an area), `climate`, `scene`, `cover`, `fan`; `script` tagged as a voice scene | ✅ by default |
-| **2** | `lock`, `camera`, `switch`, `vacuum` | ❌ (per-entity opt-in via the allowlist for now; a UI toggle in Phase 2) |
-| **3** | `sensor`, `binary_sensor`, `number`, `button`, `automation`, `update`, … | ❌ never |
+| **1** | `media_player`, `climate`, `scene`, `cover`, `fan`, `vacuum` | ✅ by default |
+| **area-scoped** | `light`, `switch` | ✅ only if the entity has an HA **area** (a room-scoped target; drops area-less junk) |
+| **2** | `lock`, `camera` | ❌ (a UI toggle in Phase 2) |
+| **3** | `sensor`, `binary_sensor`, `number`, `button`, `automation`, `script`, `input_*`, … | ❌ never — unless force-labelled |
 
-Per-entity `EXTRA_ALLOW` / `EXTRA_DENY` lists in `const.py` tune the edges (light-like
-switches, the specific voice scripts, an HT-satellite media_player to keep out). Lights are
-individual-but-room-scoped in Phase 1; the flagship per-area **light groups** ("Kitchen
-Lights") arrive in Phase 3.
+Config/diagnostic entities (those with an `entity_category`) and hidden entities are never
+exposed.
+
+### Overrides are HA **labels**, not code
+
+The handful of things no rule can infer — *which scripts are voice scenes, which helpers are
+voice targets* — you mark with a label in HA (Settings › Labels, then tag the entity):
+
+- Label an entity **`alexa`** → force-exposed (this is how voice-scene scripts and voice
+  helpers opt in; also how you expose a *hidden* light you still want in Alexa).
+- Label an entity **`alexa-hide`** → force-excluded (wins over everything).
+
+The policy reads labels live. Nothing is hardcoded; you manage the exceptions in HA where
+they belong. Lights are individual-but-room-scoped in Phase 1; the flagship per-area **light
+groups** ("Kitchen Lights") arrive in Phase 3.
+
+### Churn cleanup (the stability contract, in practice)
+
+Sonos re-discovery leaves **stale exposure records** — entity_ids Alexa still lists for
+speakers that were renamed or removed. The engine treats a removal of a **ghost** (an
+entity_id that no longer exists) as always-safe cleanup, so it never trips the fail-safe.
+Only removals of entities that *still exist* count against the safety threshold — and a large
+batch of those is held with a notification until you approve it (see `max_removals` below).
 
 ## Install
 
@@ -75,9 +97,10 @@ Integration › Alexa Curator**. Requires Home Assistant Cloud (Nabu Casa) with 
 Two services (Developer Tools › Actions):
 
 - **`alexa_curator.preview`** — dry run. Reports what *would* change (a notification + the log),
-  changes nothing. **Run this first:** against an already-curated system it should be a
-  near-no-op. A large diff means the policy needs tuning before you apply.
-- **`alexa_curator.reconcile`** — apply now (respects the fail-safe hold).
+  split into live vs. stale/ghost removals; changes nothing. **Run this first.**
+- **`alexa_curator.reconcile`** — apply now (respects the fail-safe hold). Takes an optional
+  **`max_removals`** to raise the live-removal guard for one run — use a high value for the
+  initial cleanup after you've reviewed a preview; omit it for the safe default afterward.
 
 Otherwise it runs itself: on startup and whenever your entities or areas change.
 

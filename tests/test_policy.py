@@ -1,90 +1,87 @@
-"""policy.decide — the opinionated tier logic, as pure input->output cases.
+"""policy.decide — the opinionated tier logic + label overrides, as pure cases.
 
-No Home Assistant: decide takes primitives, so every tier rule is checked by
-hand-built entities. The HA-facing desired_exposure (registry walk) is verified
-on real hardware (see the plan's verification), not here.
+No Home Assistant: decide takes primitives, so every rule is checked by
+hand-built entities. The HA-facing desired_exposure (registry + label walk) is
+verified on real hardware (see the plan's verification), not here.
 """
 import policy
 
 
-def _d(entity_id, domain, *, has_area=True, hidden=False, has_entity_category=False):
+def _d(
+    domain,
+    *,
+    has_area=True,
+    hidden=False,
+    has_entity_category=False,
+    force_expose=False,
+    force_hide=False,
+):
     return policy.decide(
-        entity_id=entity_id,
         domain=domain,
         has_area=has_area,
         hidden=hidden,
         has_entity_category=has_entity_category,
+        force_expose=force_expose,
+        force_hide=force_hide,
     )
 
 
-def test_tier1_media_player_with_area_exposed():
-    assert _d("media_player.kitchen", "media_player") is True
-
-
-def test_tier1_climate_scene_cover_fan_exposed():
-    assert _d("climate.ecobee", "climate") is True
-    assert _d("scene.movie_time", "scene") is True
-    assert _d("cover.garage", "cover") is True
-    assert _d("fan.office", "fan") is True
+def test_tier1_domains_exposed():
+    for dom in ("media_player", "climate", "scene", "cover", "fan", "vacuum"):
+        assert _d(dom) is True, dom
 
 
 def test_light_with_area_exposed():
-    assert _d("light.kitchen", "light", has_area=True) is True
+    assert _d("light", has_area=True) is True
 
 
 def test_light_without_area_not_exposed():
-    # Phase 1 light rule: an individual bulb needs a room to be a clean target.
-    assert _d("light.random_strip", "light", has_area=False) is False
+    assert _d("light", has_area=False) is False
+
+
+def test_switch_with_area_exposed():
+    # A light-switch in a room reads as a clean voice target.
+    assert _d("switch", has_area=True) is True
+
+
+def test_switch_without_area_not_exposed():
+    # Area-less junk switches (LED indicators, integration plumbing) stay hidden.
+    assert _d("switch", has_area=False) is False
 
 
 def test_hidden_entity_never_exposed_even_if_tier1():
-    assert _d("media_player.kitchen", "media_player", hidden=True) is False
+    assert _d("media_player", hidden=True) is False
 
 
 def test_entity_category_never_exposed():
-    # Config/diagnostic entities (entity_category set) are not voice targets.
-    assert _d("switch.some_led", "switch", has_entity_category=True) is False
-    assert _d("number.some_config", "number", has_entity_category=True) is False
-
-
-def test_script_only_exposed_when_in_voice_allowlist():
-    assert _d("script.play_music_everywhere", "script") is True
-    assert _d("script.music_slot_janitor", "script") is False
+    assert _d("switch", has_area=True, has_entity_category=True) is False
+    assert _d("number", has_entity_category=True) is False
 
 
 def test_tier3_domains_never_exposed():
-    for dom in ("sensor", "binary_sensor", "number", "button", "automation", "update"):
-        assert _d(f"{dom}.thing", dom) is False, dom
+    for dom in ("sensor", "binary_sensor", "number", "button", "automation", "update", "script"):
+        assert _d(dom) is False, dom
 
 
 def test_tier2_domains_off_by_default():
-    for dom in ("lock", "camera", "switch", "vacuum"):
-        assert _d(f"{dom}.thing", dom) is False, dom
+    for dom in ("lock", "camera"):
+        assert _d(dom) is False, dom
 
 
-def test_extra_allow_overrides_a_tier2_domain():
-    original = policy.EXTRA_ALLOW
-    try:
-        policy.EXTRA_ALLOW = frozenset({"switch.patio_string_lights"})
-        assert _d("switch.patio_string_lights", "switch") is True
-    finally:
-        policy.EXTRA_ALLOW = original
+def test_expose_label_forces_a_tier3_entity_on():
+    # This is how a voice-scene script or a voice-target input_boolean opts in.
+    assert _d("script", force_expose=True) is True
+    assert _d("input_boolean", force_expose=True) is True
 
 
-def test_extra_deny_overrides_a_tier1_domain():
-    original = policy.EXTRA_DENY
-    try:
-        policy.EXTRA_DENY = frozenset({"media_player.arc_surround"})
-        assert _d("media_player.arc_surround", "media_player") is False
-    finally:
-        policy.EXTRA_DENY = original
+def test_hide_label_forces_a_tier1_entity_off():
+    assert _d("media_player", force_hide=True) is False
 
 
-def test_extra_deny_beats_extra_allow():
-    original_allow, original_deny = policy.EXTRA_ALLOW, policy.EXTRA_DENY
-    try:
-        policy.EXTRA_ALLOW = frozenset({"light.x"})
-        policy.EXTRA_DENY = frozenset({"light.x"})
-        assert _d("light.x", "light") is False
-    finally:
-        policy.EXTRA_ALLOW, policy.EXTRA_DENY = original_allow, original_deny
+def test_hide_label_beats_expose_label():
+    assert _d("light", has_area=True, force_expose=True, force_hide=True) is False
+
+
+def test_expose_label_beats_hidden_and_category():
+    # An explicit expose wins over the hidden/config exclusion.
+    assert _d("light", has_area=False, hidden=True, force_expose=True) is True

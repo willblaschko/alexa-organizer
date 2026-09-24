@@ -35,42 +35,34 @@ SERVICE_PREVIEW = "preview"  # dry-run: log/notify the diff, change nothing
 # lights simple (individual bulbs that have an area) — the per-area light-group
 # opinion is Phase 3.
 
-# Tier 1 — exposed by default, directly.
+# NO hardcoded entity lists. Membership is a RULE per domain; the handful of
+# things a rule can't infer (which scripts are voice scenes, which helpers are
+# voice targets) are opted in/out with HA LABELS the user manages in the UI —
+# nothing here goes stale when entity_ids churn.
+
+# Tier 1 — exposed by default, directly, by domain.
 TIER1_DOMAINS: frozenset[str] = frozenset(
-    {"media_player", "climate", "scene", "cover", "fan"}
+    {"media_player", "climate", "scene", "cover", "fan", "vacuum"}
 )
 
-# Lights are Tier 1 but get their own rule (area-scoped) — see policy.decide.
+# Lights and switches get an area-scoped rule (see policy.decide): a `light` or a
+# `switch` is exposed only if it has an HA area — a room-scoped target — which
+# catches real room lights / light-switches and drops area-less junk (LED-indicator
+# switches, integration plumbing). Config/diagnostic entities are excluded first.
 LIGHT_DOMAIN = "light"
+AREA_SCOPED_DOMAINS: frozenset[str] = frozenset({"light", "switch"})
 
-# `script` is Tier 1 ONLY when tagged as a "voice scene". Phase 1 has no UI to
-# tag, so a named allowlist stands in (the music-zone voice scripts + any the
-# user adds here). Entries are full entity_ids.
-VOICE_SCRIPT_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        "script.play_music_everywhere",
-        "script.play_music_upstairs",
-        "script.play_music_downstairs",
-        "script.stop_music_everywhere",
-    }
-)
-
-# Tier 2 — off by default (togglable once the Phase 2 UI exists). Listed for
-# clarity; Phase 1 simply does not expose them unless an entity is in
-# EXTRA_ALLOW below.
-TIER2_DOMAINS: frozenset[str] = frozenset({"lock", "camera", "switch", "vacuum"})
+# Tier 2 — off by default (a toggle once the Phase 2 UI exists).
+TIER2_DOMAINS: frozenset[str] = frozenset({"lock", "camera"})
 
 # Everything else (sensor, binary_sensor, number, button, event, automation,
 # update, select, input_*, device_tracker, weather, sun, person, …) is Tier 3:
-# never exposed. We express this as "not Tier 1 and not explicitly allowed".
+# never exposed unless force-labelled.
 
-# Per-entity overrides (the documented allowlist that lets Phase 1 reproduce the
-# live ~67 keep-set so the first reconcile is a near-no-op). Full entity_ids.
-#   EXTRA_ALLOW  — expose even though its domain isn't Tier 1 (light-like
-#                  switches, the two Eufy vacuums, toggles used as voice targets).
-#   EXTRA_DENY   — never expose even though its domain is Tier 1 (e.g. an HT
-#                  satellite media_player, a utility scene).
-# These are tuned against the real system during verification (the `preview`
-# service shows the diff); ship conservative, widen as preview reveals gaps.
-EXTRA_ALLOW: frozenset[str] = frozenset(set())
-EXTRA_DENY: frozenset[str] = frozenset(set())
+# ── Label overrides (the ONLY per-entity mechanism) ──────────────────────────
+# The user tags entities in HA. An entity carrying EXPOSE_LABEL is force-exposed
+# (this is how voice-scene scripts and voice-target helpers opt in); one carrying
+# HIDE_LABEL is force-excluded (wins over everything). Matched by label NAME
+# (case-insensitive) via the label registry, so the slug doesn't matter.
+EXPOSE_LABEL = "alexa"
+HIDE_LABEL = "alexa-hide"
