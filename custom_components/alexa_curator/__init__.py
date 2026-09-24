@@ -25,6 +25,7 @@ from .const import (
     MAX_REMOVALS,
     SERVICE_ALEXA_DEVICES,
     SERVICE_ALEXA_ROOMS,
+    SERVICE_MOVE_DEVICE,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
     SERVICE_ROOM_OP,
@@ -39,6 +40,7 @@ _ALL_SERVICES = (
     SERVICE_ALEXA_ROOMS,
     SERVICE_ALEXA_DEVICES,
     SERVICE_ROOM_OP,
+    SERVICE_MOVE_DEVICE,
 )
 
 
@@ -259,6 +261,18 @@ def _register_services(hass: HomeAssistant) -> None:
             }
         ),
     )
+    async def move_device(call: ServiceCall) -> None:
+        from . import alexa_cloud
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        try:
+            await alexa_cloud.async_move_device(
+                hass, call.data["endpoint_id"], call.data.get("from"), call.data.get("to")
+            )
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            raise HomeAssistantError(str(err)) from err
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_ROOM_OP,
@@ -268,6 +282,18 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("action"): vol.In(["create", "rename", "delete"]),
                 vol.Optional("id"): str,
                 vol.Optional("name"): str,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MOVE_DEVICE,
+        move_device,
+        schema=vol.Schema(
+            {
+                vol.Required("endpoint_id"): str,
+                vol.Optional("from"): str,
+                vol.Optional("to"): str,
             }
         ),
     )

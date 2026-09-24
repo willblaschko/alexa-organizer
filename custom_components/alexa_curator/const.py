@@ -37,6 +37,8 @@ SERVICE_ALEXA_DEVICES = "alexa_devices"
 # Experimental room sync: apply ONE room op (create / rename / delete) — the panel
 # calls this per op so it can show per-op status like the Chorus change bar.
 SERVICE_ROOM_OP = "room_op"
+# Experimental: move ONE device between Alexa rooms (per-move, for panel status).
+SERVICE_MOVE_DEVICE = "move_device"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.

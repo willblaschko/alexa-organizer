@@ -38,6 +38,20 @@ interface RoomPlan {
   ops?: RoomOp[];
 }
 
+interface DeviceRoom {
+  id: string;
+  name: string;
+  room_id: string | null;
+  room_name: string | null;
+}
+
+interface DeviceRoomsData {
+  available: boolean;
+  reason?: string;
+  rooms?: Array<{ id: string; name: string }>;
+  devices?: DeviceRoom[];
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -113,6 +127,10 @@ export class AlexaPanel extends LitElement {
   @state() private _roomBusy = false;
   @state() private _roomInclude = new Set<string>(); // op keys to apply
   @state() private _roomStatus: Record<string, string> = {}; // op key -> pending/running/done/error
+  @state() private _deviceRooms: DeviceRoomsData | null = null;
+  @state() private _deviceRoomsBusy = false;
+  @state() private _moves: Record<string, string> = {}; // endpoint id -> target room id ("" = unassigned)
+  @state() private _moveStatus: Record<string, string> = {};
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -324,6 +342,7 @@ export class AlexaPanel extends LitElement {
         )}
         ${this._ghosts.length ? this._ghostSection() : nothing}
         ${this._roomSection()}
+        ${this._deviceRoomsSection()}
         ${this._alexaSection()}
       </div>
       ${this._hasPending ? this._deltaBar() : nothing}
@@ -335,14 +354,20 @@ export class AlexaPanel extends LitElement {
   }
 
   private get _hasPending(): boolean {
-    return this._hasExposure || this._alexaRemove.size > 0 || this._roomInclude.size > 0;
+    return (
+      this._hasExposure ||
+      this._alexaRemove.size > 0 ||
+      this._roomInclude.size > 0 ||
+      this._moveCount > 0
+    );
   }
 
   private async _applyAll(): Promise<void> {
-    if (this._busy || this._alexaBusy || this._roomBusy) return;
+    if (this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy) return;
     if (this._hasExposure) await this._apply(false);
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._roomInclude.size > 0) await this._applyRoomOps();
+    if (this._moveCount > 0) await this._applyMoves();
   }
 
   private async _loadRoomPlan(): Promise<void> {
@@ -469,6 +494,122 @@ export class AlexaPanel extends LitElement {
     `;
   }
 
+  private async _loadDeviceRooms(): Promise<void> {
+    if (this._deviceRoomsBusy) return;
+    this._deviceRoomsBusy = true;
+    try {
+      this._deviceRooms = await this.hass.connection.sendMessagePromise<DeviceRoomsData>({
+        type: "alexa_curator/device_rooms",
+      });
+      this._moves = {};
+      this._moveStatus = {};
+    } finally {
+      this._deviceRoomsBusy = false;
+    }
+  }
+
+  private _currentRoom(d: DeviceRoom): string {
+    return d.room_id ?? "";
+  }
+
+  private _onRoomChange(d: DeviceRoom, value: string): void {
+    const next = { ...this._moves };
+    if (value === this._currentRoom(d)) delete next[d.id];
+    else next[d.id] = value;
+    this._moves = next;
+  }
+
+  private get _moveCount(): number {
+    return Object.keys(this._moves).length;
+  }
+
+  private async _applyMoves(): Promise<void> {
+    const byId = new Map((this._deviceRooms?.devices ?? []).map((d) => [d.id, d]));
+    for (const [id, to] of Object.entries(this._moves)) {
+      const d = byId.get(id);
+      if (!d) continue;
+      this._moveStatus = { ...this._moveStatus, [id]: "running" };
+      const data: Record<string, unknown> = { endpoint_id: id };
+      if (d.room_id) data.from = d.room_id;
+      if (to) data.to = to;
+      try {
+        await this.hass.callService("alexa_curator", "move_device", data);
+        this._moveStatus = { ...this._moveStatus, [id]: "done" };
+      } catch {
+        this._moveStatus = { ...this._moveStatus, [id]: "error" };
+      }
+    }
+    await this._loadDeviceRooms();
+  }
+
+  private _deviceRoomsSection(): TemplateResult {
+    const dr = this._deviceRooms;
+    return html`
+      <section class="alexa-exp">
+        <h2>Devices in rooms <span class="exp">experimental</span></h2>
+        <p class="muted">
+          Which Alexa room each device sits in. Change a device's room with the dropdown —
+          moves apply from the bar below.
+        </p>
+        ${!dr
+          ? html`<button class="apply" ?disabled=${this._deviceRoomsBusy} @click=${this._loadDeviceRooms}>
+              ${this._deviceRoomsBusy ? "Loading…" : "Load device rooms"}
+            </button>`
+          : dr.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${dr.reason ?? "no session"}. Needs Alexa Media Player logged in.
+              </div>`
+            : this._deviceRoomsBody(dr)}
+      </section>
+    `;
+  }
+
+  private _deviceRoomsBody(dr: DeviceRoomsData): TemplateResult {
+    const rooms = dr.rooms ?? [];
+    const byRoom = new Map<string, DeviceRoom[]>();
+    for (const d of dr.devices ?? []) {
+      const key = d.room_name ?? "Unassigned";
+      const arr = byRoom.get(key);
+      if (arr) arr.push(d);
+      else byRoom.set(key, [d]);
+    }
+    const names = [...byRoom.keys()].sort((a, b) =>
+      a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b)
+    );
+    return html`
+      ${names.map(
+        (rn) => html`
+          <div class="kindgroup">
+            <h3>${rn} <span class="count">${byRoom.get(rn)!.length}</span></h3>
+            <div class="rows">${byRoom.get(rn)!.map((d) => this._deviceRoomRow(d, rooms))}</div>
+          </div>
+        `
+      )}
+    `;
+  }
+
+  private _deviceRoomRow(d: DeviceRoom, rooms: Array<{ id: string; name: string }>): TemplateResult {
+    const staged = d.id in this._moves;
+    const selected = staged ? this._moves[d.id] : this._currentRoom(d);
+    const busy = this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy;
+    return html`
+      <div class="row ${staged ? "moving" : ""}">
+        ${this._statusDisc(this._moveStatus[d.id])}
+        <div class="info"><div class="name">${d.name}</div></div>
+        <select
+          class="roomsel"
+          ?disabled=${busy}
+          @change=${(e: Event) => this._onRoomChange(d, (e.target as HTMLSelectElement).value)}
+        >
+          <option value="" ?selected=${selected === ""}>(unassigned)</option>
+          ${rooms.map(
+            (r) => html`<option value=${r.id} ?selected=${selected === r.id}>${r.name}</option>`
+          )}
+        </select>
+      </div>
+    `;
+  }
+
   private _alexaSection(): TemplateResult {
     const a = this._alexa;
     if (!a) {
@@ -550,7 +691,8 @@ export class AlexaPanel extends LitElement {
     const s = this._summary;
     const dev = this._alexaRemove.size;
     const rooms = this._roomInclude.size;
-    const busy = this._busy || this._alexaBusy || this._roomBusy;
+    const moves = this._moveCount;
+    const busy = this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -561,6 +703,7 @@ export class AlexaPanel extends LitElement {
             <span class="chip ghost" ?hidden=${!s.ghost_remove}>−${s.ghost_remove} stale</span>
             <span class="chip live" ?hidden=${!dev}>−${dev} device${dev === 1 ? "" : "s"}</span>
             <span class="chip add" ?hidden=${!rooms}>${rooms} room${rooms === 1 ? "" : "s"}</span>
+            <span class="chip add" ?hidden=${!moves}>${moves} move${moves === 1 ? "" : "s"}</span>
           </div>
           <div class="applybtns">
             <button class="link" @click=${() => (this._detailsOpen = !this._detailsOpen)}>
@@ -583,7 +726,13 @@ export class AlexaPanel extends LitElement {
       .map((d) => d.name)
       .sort();
     const roomOps = (this._roomPlan?.ops ?? []).filter((o) => this._roomInclude.has(this._opKey(o)));
-    const empty = !changed.length && !this._ghosts.length && !devNames.length && !roomOps.length;
+    const moves = Object.entries(this._moves);
+    const roomName = (id: string): string =>
+      (this._deviceRooms?.rooms ?? []).find((r) => r.id === id)?.name ?? "(unassigned)";
+    const devName = (id: string): string =>
+      (this._deviceRooms?.devices ?? []).find((d) => d.id === id)?.name ?? id;
+    const empty =
+      !changed.length && !this._ghosts.length && !devNames.length && !roomOps.length && !moves.length;
     return html`
       <div class="deltadetails">
         ${changed.map(
@@ -604,6 +753,11 @@ export class AlexaPanel extends LitElement {
               ${o.op === "create" ? "+" : o.op === "delete" ? "−" : "~"}
             </span>
             ${o.op} room · ${o.op === "rename" ? html`${o.from} → ${o.to}` : o.name}
+          </div>`
+        )}
+        ${moves.map(
+          ([id, to]) => html`<div class="dline">
+            <span class="plus">~</span> move · ${devName(id)} → ${to ? roomName(to) : "(unassigned)"}
           </div>`
         )}
         ${empty ? html`<div class="dline muted">No pending changes.</div>` : nothing}
@@ -957,6 +1111,23 @@ export class AlexaPanel extends LitElement {
     }
     .row.removing .name {
       color: var(--error-color, #c62828);
+    }
+    .roomsel {
+      flex: none;
+      max-width: 190px;
+      padding: 5px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #cfcfcf);
+      background: var(--card-background-color, #fff);
+      color: var(--primary-text-color, #212121);
+      font: inherit;
+      font-size: 0.85rem;
+    }
+    .row.moving {
+      background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
+    }
+    .row.moving .name {
+      color: var(--primary-color, #0288d1);
     }
     .deltabar {
       position: fixed;

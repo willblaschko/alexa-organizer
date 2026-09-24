@@ -188,6 +188,67 @@ async def async_delete_group(hass, group_id: str, email: str | None = None) -> N
     await async_graphql(hass, {"query": _DELETE_GROUP, "variables": {"id": group_id}}, email)
 
 
+# ── Device → room assignment (move an endpoint between rooms) ─────────────────
+
+_GROUP_MEMBER = (
+    "mutation m($id:String!,$dev:[String!],$op:CollectionOperationOptions!){updateDeviceGroup"
+    "(updateDeviceGroupInput:{deviceGroupId:$id,memberDeviceIds:$dev,"
+    "memberDeviceIdsUpdateOperation:$op}){deviceGroup{id}}}"
+)
+
+
+async def _group_member(hass, group_id: str, endpoint_id: str, op: str, email: str | None = None) -> None:
+    await async_graphql(
+        hass, {"query": _GROUP_MEMBER, "variables": {"id": group_id, "dev": [endpoint_id], "op": op}}, email
+    )
+
+
+async def async_move_device(
+    hass, endpoint_id: str, from_room_id: str | None, to_room_id: str | None, email: str | None = None
+) -> None:
+    """Move a device between Alexa rooms: remove from its current room, add to the target."""
+    if from_room_id:
+        await _group_member(hass, from_room_id, endpoint_id, "REMOVE", email)
+    if to_room_id:
+        await _group_member(hass, to_room_id, endpoint_id, "ADD", email)
+
+
+async def async_device_rooms(hass, email: str | None = None) -> dict:
+    """Rooms + real (kept) devices with each device's CURRENT room. Read-only.
+
+    Junk/protected device registrations are excluded — only the real devices worth
+    placing in a room are offered for assignment.
+    """
+    groups = await async_list_groups(hass, email)
+    endpoints = await async_list_endpoints(hass, email)
+
+    ep_room: dict[str, dict] = {}
+    for g in groups:
+        info = {"id": g["id"], "name": _group_name(g)}
+        for m in (g.get("memberDevices") or {}).get("items") or []:
+            if m.get("id"):
+                ep_room[m["id"]] = info
+
+    rooms = sorted(
+        ({"id": g["id"], "name": _group_name(g)} for g in groups), key=lambda r: r["name"].lower()
+    )
+    devices: list[dict] = []
+    for d in annotate_devices(endpoints):
+        if d["protected"] or d["suggested_remove"]:
+            continue
+        r = ep_room.get(d["id"])
+        devices.append(
+            {
+                "id": d["id"],
+                "name": d["name"],
+                "room_id": r["id"] if r else None,
+                "room_name": r["name"] if r else None,
+            }
+        )
+    devices.sort(key=lambda x: x["name"].lower())
+    return {"rooms": rooms, "devices": devices}
+
+
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────
 
 _ENDPOINTS_QUERY = (
