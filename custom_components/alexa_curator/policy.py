@@ -31,6 +31,48 @@ except ImportError:  # pragma: no cover
     )
 
 
+def classify(
+    *,
+    domain: str,
+    has_area: bool,
+    hidden: bool,
+    has_entity_category: bool,
+    force_expose: bool,
+    force_hide: bool,
+) -> tuple[bool, str]:
+    """Return (should_expose, human reason). The reason drives the UI's "why" column.
+
+    Order matters: a HIDE label is an absolute kill switch; then an EXPOSE label
+    force-includes; then the universal "never expose hidden / config / diagnostic"
+    rule; then the domain rules.
+    """
+    if force_hide:
+        return False, "label: alexa-hide"
+    if force_expose:
+        return True, "label: alexa"
+
+    # Hidden entities, and config/diagnostic ones (entity_category set), are never
+    # voice targets.
+    if hidden:
+        return False, "hidden in HA"
+    if has_entity_category:
+        return False, "config/diagnostic"
+
+    # Lights and switches must be room-scoped (have an area) — that's what makes a
+    # clean "turn on the <room> lights" target and drops area-less junk.
+    if domain in AREA_SCOPED_DOMAINS:
+        if has_area:
+            return True, f"rule: {domain} in a room"
+        return False, f"{domain} has no room"
+
+    # Tier 1 domains expose directly.
+    if domain in TIER1_DOMAINS:
+        return True, f"rule: {domain}"
+
+    # Everything else stays hidden unless force-labelled above.
+    return False, "not a voice target"
+
+
 def decide(
     *,
     domain: str,
@@ -40,33 +82,15 @@ def decide(
     force_expose: bool,
     force_hide: bool,
 ) -> bool:
-    """Return True if this entity should be exposed to Alexa.
-
-    Order matters: a HIDE label is an absolute kill switch; then an EXPOSE label
-    force-includes; then the universal "never expose hidden / config / diagnostic"
-    rule; then the domain rules.
-    """
-    if force_hide:
-        return False
-    if force_expose:
-        return True
-
-    # Hidden entities, and config/diagnostic ones (entity_category set), are never
-    # voice targets.
-    if hidden or has_entity_category:
-        return False
-
-    # Lights and switches must be room-scoped (have an area) — that's what makes a
-    # clean "turn on the <room> lights" target and drops area-less junk.
-    if domain in AREA_SCOPED_DOMAINS:
-        return has_area
-
-    # Tier 1 domains expose directly.
-    if domain in TIER1_DOMAINS:
-        return True
-
-    # Everything else stays hidden unless force-labelled above.
-    return False
+    """Return True if this entity should be exposed to Alexa (the boolean of `classify`)."""
+    return classify(
+        domain=domain,
+        has_area=has_area,
+        hidden=hidden,
+        has_entity_category=has_entity_category,
+        force_expose=force_expose,
+        force_hide=force_hide,
+    )[0]
 
 
 def desired_exposure(hass) -> set[str]:

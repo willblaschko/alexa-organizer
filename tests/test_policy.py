@@ -85,3 +85,29 @@ def test_hide_label_beats_expose_label():
 def test_expose_label_beats_hidden_and_category():
     # An explicit expose wins over the hidden/config exclusion.
     assert _d("light", has_area=False, hidden=True, force_expose=True) is True
+
+
+# ── classify reasons (drive the UI's "why" column) ───────────────────────────
+
+def _c(domain, **kw):
+    base = dict(has_area=True, hidden=False, has_entity_category=False,
+               force_expose=False, force_hide=False)
+    base.update(kw)
+    return policy.classify(domain=domain, **base)
+
+
+def test_classify_reasons():
+    assert _c("media_player") == (True, "rule: media_player")
+    assert _c("light", has_area=True) == (True, "rule: light in a room")
+    assert _c("light", has_area=False) == (False, "light has no room")
+    assert _c("switch", has_area=False) == (False, "switch has no room")
+    assert _c("media_player", hidden=True) == (False, "hidden in HA")
+    assert _c("switch", has_entity_category=True) == (False, "config/diagnostic")
+    assert _c("script", force_expose=True) == (True, "label: alexa")
+    assert _c("media_player", force_hide=True) == (False, "label: alexa-hide")
+    assert _c("sensor") == (False, "not a voice target")
+
+
+def test_decide_matches_classify_boolean():
+    for dom in ("media_player", "light", "switch", "sensor", "script"):
+        assert _d(dom, has_area=False) == _c(dom, has_area=False)[0]

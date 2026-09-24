@@ -24,6 +24,7 @@ from .const import (
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
 )
+from .panel import async_register_panel, async_unregister_panel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     _register_services(hass)
+    await async_register_panel(hass)
 
     # Initial reconcile (guarded by the engine's fail-safe).
     await _run_reconcile()
@@ -79,6 +81,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data.get(DOMAIN):
         for service in _ALL_SERVICES:
             hass.services.async_remove(DOMAIN, service)
+        async_unregister_panel(hass)
     return True
 
 

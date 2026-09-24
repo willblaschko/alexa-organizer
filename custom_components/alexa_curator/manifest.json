@@ -3,6 +3,7 @@
   "name": "Alexa Curator",
   "codeowners": ["@willblaschko"],
   "config_flow": true,
+  "dependencies": ["frontend", "http", "websocket_api"],
   "after_dependencies": ["cloud"],
   "documentation": "https://github.com/willblaschko/alexa-curator",
   "integration_type": "hub",
