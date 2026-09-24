@@ -152,6 +152,20 @@ export class AlexaPanel extends LitElement {
     }
   }
 
+  private async _applyAlexa(limit: number): Promise<void> {
+    if (this._alexaBusy) return;
+    this._alexaBusy = true;
+    try {
+      // The write lives in the alexa_devices service (one code path); re-preview after.
+      await this.hass.callService("alexa_curator", "alexa_devices", { apply: true, limit });
+      this._alexa = await this.hass.connection.sendMessagePromise<AlexaDevices>({
+        type: "alexa_curator/alexa_devices",
+      });
+    } finally {
+      this._alexaBusy = false;
+    }
+  }
+
   private get _nothingToDo(): boolean {
     const s = this._summary;
     return s.expose + s.live_remove + s.ghost_remove === 0;
@@ -278,6 +292,14 @@ export class AlexaPanel extends LitElement {
                   <span class="chip live" ?hidden=${!a.junk.length}>${a.junk.length} flagged</span>
                   <span class="chip ghost">${a.protected.length} protected</span>
                   <span class="chip ok">${a.keep.length} keep</span>
+                  <button class="apply" ?disabled=${this._alexaBusy || !a.junk.length}
+                    @click=${() => this._applyAlexa(5)}>
+                    ${this._alexaBusy ? "Working…" : "Remove 5"}
+                  </button>
+                  <button class="apply ghostbtn" ?disabled=${this._alexaBusy || !a.junk.length}
+                    @click=${() => this._applyAlexa(0)}>
+                    Remove all ${a.junk.length}
+                  </button>
                 </div>
                 <div class="rows scroll">
                   ${a.junk.map(
@@ -285,9 +307,7 @@ export class AlexaPanel extends LitElement {
                   )}
                 </div>
                 <p class="muted">
-                  Protected, never touched: ${a.protected.join(", ") || "none"}. To act on the
-                  ${a.junk.length} flagged, run the <code>alexa_curator.alexa_devices</code> action
-                  with <code>apply: true</code>.
+                  Protected, never touched: ${a.protected.join(", ") || "none"}.
                 </p>
               `}
       </section>
@@ -592,6 +612,10 @@ export class AlexaPanel extends LitElement {
       padding: 2px 6px;
       border-radius: 4px;
       vertical-align: 2px;
+    }
+    .ghostbtn {
+      background: var(--secondary-background-color, #e0e0e0) !important;
+      color: var(--primary-text-color, #212121) !important;
     }
     .rows.scroll {
       max-height: 240px;
