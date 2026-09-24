@@ -112,9 +112,34 @@ export class AlexaPanel extends LitElement {
   @state() private _roomPlan: RoomPlan | null = null;
   @state() private _roomBusy = false;
 
+  private _ro?: ResizeObserver;
+  private _onResize = (): void => this._positionBar();
+
   override connectedCallback(): void {
     super.connectedCallback();
     void this._load();
+    window.addEventListener("resize", this._onResize);
+    this._ro = new ResizeObserver(() => this._positionBar());
+    this._ro.observe(this);
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("resize", this._onResize);
+    this._ro?.disconnect();
+  }
+
+  protected override updated(): void {
+    this._positionBar();
+  }
+
+  // Center the floating toast on the TOOL (this panel's content box), not the viewport —
+  // HA's sidebar offsets the viewport center. Width is a fixed % of the tool width.
+  private _positionBar(): void {
+    const r = this.getBoundingClientRect();
+    if (!r.width) return;
+    this.style.setProperty("--ac-bar-left", `${Math.round(r.left + r.width / 2)}px`);
+    this.style.setProperty("--ac-bar-width", `${Math.max(300, Math.round(r.width * 0.6))}px`);
   }
 
   private async _load(): Promise<void> {
@@ -886,10 +911,10 @@ export class AlexaPanel extends LitElement {
     .deltabar {
       position: fixed;
       bottom: 16px;
-      left: 50%;
+      /* Centered on the tool (host), not the viewport — set from JS. */
+      left: var(--ac-bar-left, 50%);
       transform: translateX(-50%);
-      width: auto;
-      max-width: min(720px, calc(100% - 24px));
+      width: var(--ac-bar-width, min(680px, calc(100vw - 32px)));
       z-index: 20;
       overflow: hidden;
       background: var(--card-background-color, #fff);
