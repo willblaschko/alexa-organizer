@@ -92,6 +92,7 @@ export class AlexaPanel extends LitElement {
   @state() private _alexa: AlexaDevices | null = null;
   @state() private _alexaBusy = false;
   @state() private _alexaRemove = new Set<string>(); // endpoint ids toggled for removal
+  @state() private _detailsOpen = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -241,19 +242,7 @@ export class AlexaPanel extends LitElement {
               actual rooms &amp; groups in the Alexa app.
             </p>
           </div>
-          <div class="actions">
-            <span class="chip add" ?hidden=${!s.expose}>+${s.expose} expose</span>
-            <span class="chip live" ?hidden=${!s.live_remove}>−${s.live_remove} live</span>
-            <span class="chip ghost" ?hidden=${!s.ghost_remove}>−${s.ghost_remove} stale</span>
-            <span class="chip ok" ?hidden=${!this._nothingToDo}>In sync</span>
-            <button
-              class="apply"
-              ?disabled=${this._nothingToDo || this._busy}
-              @click=${() => this._apply(false)}
-            >
-              ${this._busy ? "Applying…" : "Apply"}
-            </button>
-          </div>
+          <span class="chip ok headernote" ?hidden=${this._hasPending}>In sync</span>
         </header>
 
         ${this._unavailable
@@ -291,8 +280,22 @@ export class AlexaPanel extends LitElement {
         ${this._ghosts.length ? this._ghostSection() : nothing}
         ${this._alexaSection()}
       </div>
-      ${this._alexaRemove.size > 0 ? this._deviceApplyBar() : nothing}
+      ${this._hasPending ? this._deltaBar() : nothing}
     `;
+  }
+
+  private get _hasExposure(): boolean {
+    return !this._nothingToDo;
+  }
+
+  private get _hasPending(): boolean {
+    return this._hasExposure || this._alexaRemove.size > 0;
+  }
+
+  private async _applyAll(): Promise<void> {
+    if (this._busy || this._alexaBusy) return;
+    if (this._hasExposure) await this._apply(false);
+    if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
   }
 
   private _alexaSection(): TemplateResult {
@@ -372,19 +375,57 @@ export class AlexaPanel extends LitElement {
     `;
   }
 
-  private _deviceApplyBar(): TemplateResult {
-    const n = this._alexaRemove.size;
+  private _deltaBar(): TemplateResult {
+    const s = this._summary;
+    const dev = this._alexaRemove.size;
+    const busy = this._busy || this._alexaBusy;
     return html`
-      <div class="deltabar ${this._alexaBusy ? "busy" : ""}">
+      <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
         <div class="deltabar-inner">
-          <span class="delta-count">
-            ${this._alexaBusy ? "Removing…" : `${n} Alexa device${n === 1 ? "" : "s"} to remove`}
-          </span>
-          <button class="apply" ?disabled=${this._alexaBusy} @click=${this._applyAlexaSelected}>
-            ${this._alexaBusy ? "Working…" : `Remove ${n}`}
-          </button>
+          <div class="chips">
+            <span class="chip add" ?hidden=${!s.expose}>+${s.expose} expose</span>
+            <span class="chip live" ?hidden=${!s.live_remove}>−${s.live_remove} unexpose</span>
+            <span class="chip ghost" ?hidden=${!s.ghost_remove}>−${s.ghost_remove} stale</span>
+            <span class="chip live" ?hidden=${!dev}>−${dev} device${dev === 1 ? "" : "s"}</span>
+          </div>
+          <div class="applybtns">
+            <button class="link" @click=${() => (this._detailsOpen = !this._detailsOpen)}>
+              ${this._detailsOpen ? "Hide" : "Details"}
+            </button>
+            <button class="apply" ?disabled=${busy} @click=${this._applyAll}>
+              ${busy ? "Applying…" : "Apply all"}
+            </button>
+          </div>
         </div>
+        ${this._detailsOpen ? this._deltaDetails() : nothing}
+      </div>
+    `;
+  }
+
+  private _deltaDetails(): TemplateResult {
+    const changed = this._rows.filter((r) => r.desired !== r.exposed);
+    const devNames = (this._alexa?.devices ?? [])
+      .filter((d) => this._alexaRemove.has(d.id))
+      .map((d) => d.name)
+      .sort();
+    return html`
+      <div class="deltadetails">
+        ${changed.map(
+          (r) => html`<div class="dline">
+            <span class="${r.desired ? "plus" : "minus"}">${r.desired ? "+" : "−"}</span>
+            ${r.desired ? "expose" : "unexpose"} · ${r.name}
+          </div>`
+        )}
+        ${this._ghosts.map(
+          (r) => html`<div class="dline"><span class="minus">−</span> clean stale · ${r.entity_id}</div>`
+        )}
+        ${devNames.map(
+          (n) => html`<div class="dline"><span class="minus">−</span> remove device · ${n}</div>`
+        )}
+        ${!changed.length && !this._ghosts.length && !devNames.length
+          ? html`<div class="dline muted">No pending changes.</div>`
+          : nothing}
       </div>
     `;
   }
@@ -788,6 +829,32 @@ export class AlexaPanel extends LitElement {
     .delta-count {
       font-weight: 600;
       font-size: 0.95rem;
+    }
+    .headernote {
+      align-self: center;
+    }
+    .deltadetails {
+      position: relative;
+      max-width: 900px;
+      margin: 0 auto;
+      max-height: 42vh;
+      overflow-y: auto;
+      padding: 4px 16px 12px;
+      border-top: 1px solid var(--divider-color, #eee);
+    }
+    .dline {
+      font-size: 0.82rem;
+      padding: 3px 0;
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }
+    .plus {
+      color: var(--success-color, #2e7d32);
+      font-weight: 700;
+      width: 14px;
+      text-align: center;
+      flex: none;
     }
     .rows.scroll {
       max-height: 240px;
