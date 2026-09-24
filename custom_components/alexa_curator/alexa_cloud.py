@@ -119,7 +119,7 @@ _ENDPOINTS_QUERY = (
 _PROTECT_NAME = ("alexa media player", "alexa web")
 _PROTECT_CATEGORY = ("APPLICATION",)
 _JUNK_KEYWORDS = (
-    "android device", "audible", "amazon alexa on", "echo buds", " fire", "eero",
+    "android device", "audible", "amazon alexa on", "echo buds", "eero",
     "pixel", " shield", "luna controller", "simulator", "for iphone", "for android",
 )
 
