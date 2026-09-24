@@ -7,6 +7,7 @@ change (debounced). No UI yet (Phase 2); no auto light-groups yet (Phase 3).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import voluptuous as vol
@@ -19,8 +20,10 @@ from homeassistant.helpers.debounce import Debouncer
 from . import engine, exposure
 from .const import (
     DEBOUNCE_SECONDS,
+    DEVICE_CLEANUP_DEFAULT_LIMIT,
     DOMAIN,
     MAX_REMOVALS,
+    SERVICE_ALEXA_DEVICES,
     SERVICE_ALEXA_ROOMS,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
@@ -29,7 +32,12 @@ from .panel import async_register_panel, async_unregister_panel
 
 _LOGGER = logging.getLogger(__name__)
 
-_ALL_SERVICES = (SERVICE_RECONCILE, SERVICE_PREVIEW, SERVICE_ALEXA_ROOMS)
+_ALL_SERVICES = (
+    SERVICE_RECONCILE,
+    SERVICE_PREVIEW,
+    SERVICE_ALEXA_ROOMS,
+    SERVICE_ALEXA_DEVICES,
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -144,6 +152,68 @@ def _register_services(hass: HomeAssistant) -> None:
             notification_id="alexa_curator_rooms",
         )
 
+    async def alexa_devices(call: ServiceCall) -> None:
+        # EXPERIMENTAL. Default = preview (no writes). apply:true deregisters the
+        # suggested-junk devices (protected ones are never touched), up to `limit`
+        # per call so the first real run is a small, safe taste.
+        from . import alexa_cloud
+
+        from homeassistant.components import persistent_notification
+
+        def _notify(msg: str) -> None:
+            persistent_notification.async_create(
+                hass, msg, title="Alexa Curator — device cleanup",
+                notification_id="alexa_curator_devices",
+            )
+
+        try:
+            endpoints = await alexa_cloud.async_list_endpoints(hass)
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            _notify(
+                f"Couldn't reach Alexa: {err}. Needs Alexa Media Player installed and logged in."
+            )
+            return
+
+        cats = alexa_cloud.categorize_devices(endpoints)
+        junk = sorted(cats["junk"], key=lambda d: d["name"].lower())
+        protected, keep = cats["protected"], cats["keep"]
+
+        if not call.data.get("apply", False):
+            preview_lines = "\n".join(f"• {d['name']}" for d in junk)
+            _notify(
+                f"Device cleanup — PREVIEW (nothing changed).\n\n"
+                f"Would deregister {len(junk)} device(s):\n{preview_lines}\n\n"
+                f"Protected, never touched ({len(protected)}): "
+                f"{', '.join(d['name'] for d in protected) or 'none'}\n"
+                f"Keeping {len(keep)} real device(s).\n\n"
+                f"To remove them, call again with apply: true "
+                f"(optionally limit: N — default {DEVICE_CLEANUP_DEFAULT_LIMIT} per call)."
+            )
+            return
+
+        limit = call.data.get("limit", DEVICE_CLEANUP_DEFAULT_LIMIT)
+        targets = junk[:limit] if limit else junk
+        protected_ids = {d["id"] for d in protected}  # belt-and-suspenders guard
+        done: list[str] = []
+        failed: list[str] = []
+        for d in targets:
+            if d["id"] in protected_ids:
+                continue
+            try:
+                await alexa_cloud.async_remove_device(hass, d["id"])
+                done.append(d["name"])
+            except alexa_cloud.AlexaCloudUnavailable as err:
+                failed.append(f"{d['name']}: {err}")
+            await asyncio.sleep(0.4)  # be gentle on Amazon's rate limits
+
+        remaining = len(junk) - len(targets)
+        msg = f"Device cleanup — deregistered {len(done)} device(s)."
+        if remaining > 0:
+            msg += f" {remaining} still suggested (raise limit or run again)."
+        if failed:
+            msg += "\n\nFailures:\n" + "\n".join(failed[:10])
+        _notify(msg)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_RECONCILE,
@@ -152,3 +222,14 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW, preview)
     hass.services.async_register(DOMAIN, SERVICE_ALEXA_ROOMS, alexa_rooms)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ALEXA_DEVICES,
+        alexa_devices,
+        schema=vol.Schema(
+            {
+                vol.Optional("apply", default=False): bool,
+                vol.Optional("limit"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+            }
+        ),
+    )

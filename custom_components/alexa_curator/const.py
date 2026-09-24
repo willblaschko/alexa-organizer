@@ -31,6 +31,13 @@ SERVICE_PREVIEW = "preview"  # dry-run: log/notify the diff, change nothing
 # Experimental (Alexa Room Sync): read-only proof that the alexa_media_player
 # piggyback works — lists the account's Alexa rooms. No writes.
 SERVICE_ALEXA_ROOMS = "alexa_rooms"
+# Experimental device cleanup: preview (default) or, with apply:true, deregister the
+# suggested-junk device registrations. Protected devices are never touched.
+SERVICE_ALEXA_DEVICES = "alexa_devices"
+
+# How many junk devices to remove per apply call when no explicit limit is given —
+# small, so the first real run is a safe taste, not a 60-device sweep.
+DEVICE_CLEANUP_DEFAULT_LIMIT = 5
 
 # ── The opinionated exposure policy (docs/alexa.md tiers) ─────────────────────
 # Decisions are made per DOMAIN (the part of an entity_id before the dot), then

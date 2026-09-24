@@ -101,3 +101,71 @@ async def async_list_groups(hass, email: str | None = None) -> list[dict]:
     """Return the account's Alexa device groups (rooms). Read-only."""
     node = await async_graphql(hass, {"query": _GROUPS_QUERY}, email)
     return (((node.get("data") or {}).get("listDeviceGroups") or {}).get("deviceGroups")) or []
+
+
+# ── Device registrations (Echos, phantom app installs, …) ────────────────────
+
+_ENDPOINTS_QUERY = (
+    "query{listEndpoints(listEndpointsInput:{}){endpoints{id friendlyNameObject{value{text}} "
+    "displayCategories{primary{value}} legacyIdentifiers{dmsIdentifier{deviceType{value{text}}}}}}}"
+)
+
+# Categorization of Amazon DEVICE registrations (endpoints that carry a deviceType).
+# There is no reliable "dead/offline" flag from the API, so this is a heuristic SUGGESTION
+# the user reviews — never an autonomous delete.
+#   PROTECTED — must never be removed (kills our session, or the web login).
+#   junk      — suggested removal (phantom app/device re-registrations, dupes).
+#   keep      — everything else (real Echos).
+_PROTECT_NAME = ("alexa media player", "alexa web")
+_PROTECT_CATEGORY = ("APPLICATION",)
+_JUNK_KEYWORDS = (
+    "android device", "audible", "amazon alexa on", "echo buds", " fire", "eero",
+    "pixel", " shield", "luna controller", "simulator", "for iphone", "for android",
+)
+
+
+async def async_list_endpoints(hass, email: str | None = None) -> list[dict]:
+    """Return the account's DEVICE endpoints (those with a deviceType). Read-only.
+
+    Smart-home endpoints (lights etc., no deviceType) are excluded — those are managed
+    through exposure, not removed here.
+    """
+    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+    out: list[dict] = []
+    for e in eps:
+        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
+        device_type = (((dms or {}).get("deviceType") or {}).get("value") or {}).get("text") if dms else None
+        if device_type is None:
+            continue  # a smart-home endpoint, not an account device
+        name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or "(unnamed)"
+        category = ((e.get("displayCategories") or {}).get("primary") or {}).get("value") or ""
+        out.append({"id": e["id"], "name": name, "category": category, "device_type": device_type})
+    return out
+
+
+def categorize_devices(endpoints: list[dict]) -> dict[str, list[dict]]:
+    """Split device endpoints into keep / junk / protected (a reviewable suggestion)."""
+    keep: list[dict] = []
+    junk: list[dict] = []
+    protected: list[dict] = []
+    for e in endpoints:
+        lname = e["name"].lower()
+        if e["category"] in _PROTECT_CATEGORY or any(p in lname for p in _PROTECT_NAME):
+            protected.append(e)
+        elif any(k in lname for k in _JUNK_KEYWORDS):
+            junk.append(e)
+        else:
+            keep.append(e)
+    return {"keep": keep, "junk": junk, "protected": protected}
+
+
+_REMOVE = (
+    "mutation d($id:EndpointId!){deregisterEndpoint(deregisterEndpointInput:{endpointId:$id}){endpointId}}"
+)
+
+
+async def async_remove_device(hass, endpoint_id: str, email: str | None = None) -> str:
+    """Remove one Amazon device registration by endpoint id. Returns the id echoed back."""
+    node = await async_graphql(hass, {"query": _REMOVE, "variables": {"id": endpoint_id}}, email)
+    return (((node.get("data") or {}).get("deregisterEndpoint") or {}).get("endpointId")) or ""
