@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+# The pure logic (policy tiers, engine diff/guard) lives in
+# custom_components/alexa_curator. Putting it on the import path lets tests do
+# `import const, policy, engine` WITHOUT importing Home Assistant (only
+# __init__.py / exposure.py / policy.desired_exposure pull in homeassistant.*,
+# and those imports are lazy — inside the functions that need them).
+testpaths = ["tests"]
+addopts = "-ra"

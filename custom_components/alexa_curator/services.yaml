@@ -1,0 +1,7 @@
+reconcile:
+  name: Reconcile Alexa exposure
+  description: Recompute the desired Alexa-exposed set from the policy and apply the difference now (respects the fail-safe: a large removal is held, not applied).
+
+preview:
+  name: Preview Alexa exposure changes
+  description: Dry run — compute what would be exposed/unexposed to Alexa and report it (log + a notification) without changing anything. Use this before the first apply to confirm it's a near-no-op against your current set.

@@ -1,0 +1,12 @@
+{
+  "domain": "alexa_curator",
+  "name": "Alexa Curator",
+  "codeowners": ["@willblaschko"],
+  "config_flow": true,
+  "after_dependencies": ["cloud"],
+  "documentation": "https://github.com/willblaschko/alexa-curator",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/willblaschko/alexa-curator/issues",
+  "version": "0.1.0"
+}
