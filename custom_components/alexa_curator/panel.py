@@ -55,6 +55,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_inventory)
         websocket_api.async_register_command(hass, ws_set)
         websocket_api.async_register_command(hass, ws_apply)
+        websocket_api.async_register_command(hass, ws_alexa_devices)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -139,4 +140,36 @@ async def ws_apply(hass: HomeAssistant, connection, msg) -> None:
         pass  # engine already logged + notified
     connection.send_result(
         msg["id"], {"held": held, "before": before["summary"], "inventory": _safe_inventory(hass)}
+    )
+
+
+# ── Experimental: Alexa-side device cleanup preview (piggybacks alexa_media_player) ──
+# READ-ONLY. The panel's Apply button calls the alexa_curator.alexa_devices SERVICE
+# (apply: true) instead, so all the write logic stays in one place.
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/alexa_devices"})
+@websocket_api.async_response
+async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only preview of the Amazon device registrations, categorized keep/junk/protected."""
+    from . import alexa_cloud
+
+    try:
+        endpoints = await alexa_cloud.async_list_endpoints(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    cats = alexa_cloud.categorize_devices(endpoints)
+
+    def _key(d: dict) -> str:
+        return d["name"].lower()
+
+    connection.send_result(
+        msg["id"],
+        {
+            "available": True,
+            "junk": [d["name"] for d in sorted(cats["junk"], key=_key)],
+            "protected": [d["name"] for d in sorted(cats["protected"], key=_key)],
+            "keep": [d["name"] for d in sorted(cats["keep"], key=_key)],
+        },
     )

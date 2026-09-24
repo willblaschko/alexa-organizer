@@ -6,6 +6,15 @@ interface HomeAssistant {
   connection: {
     sendMessagePromise<T>(msg: Record<string, unknown>): Promise<T>;
   };
+  callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
+}
+
+interface AlexaDevices {
+  available: boolean;
+  reason?: string;
+  junk: string[];
+  protected: string[];
+  keep: string[];
 }
 
 interface Row {
@@ -75,6 +84,8 @@ export class AlexaPanel extends LitElement {
   @state() private _busy = false;
   @state() private _held = false;
   @state() private _unavailable: string | null = null;
+  @state() private _alexa: AlexaDevices | null = null;
+  @state() private _alexaBusy = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -126,6 +137,18 @@ export class AlexaPanel extends LitElement {
       this._ingest(res.inventory);
     } finally {
       this._busy = false;
+    }
+  }
+
+  private async _previewAlexa(): Promise<void> {
+    if (this._alexaBusy) return;
+    this._alexaBusy = true;
+    try {
+      this._alexa = await this.hass.connection.sendMessagePromise<AlexaDevices>({
+        type: "alexa_curator/alexa_devices",
+      });
+    } finally {
+      this._alexaBusy = false;
     }
   }
 
@@ -228,7 +251,46 @@ export class AlexaPanel extends LitElement {
           `
         )}
         ${this._ghosts.length ? this._ghostSection() : nothing}
+        ${this._alexaSection()}
       </div>
+    `;
+  }
+
+  private _alexaSection(): TemplateResult {
+    const a = this._alexa;
+    return html`
+      <section class="alexa-exp">
+        <h2>Alexa devices <span class="exp">experimental</span></h2>
+        <p class="muted">
+          Preview the stale device registrations on your Amazon account — old phones, duplicate
+          Echo Buds, dead app installs. Needs the Alexa Media Player integration logged in.
+        </p>
+        ${!a
+          ? html`<button class="apply" ?disabled=${this._alexaBusy} @click=${this._previewAlexa}>
+              ${this._alexaBusy ? "Loading…" : "Preview"}
+            </button>`
+          : a.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${a.reason ?? "no session"}. Install and log into Alexa Media Player.
+              </div>`
+            : html`
+                <div class="actions">
+                  <span class="chip live" ?hidden=${!a.junk.length}>${a.junk.length} flagged</span>
+                  <span class="chip ghost">${a.protected.length} protected</span>
+                  <span class="chip ok">${a.keep.length} keep</span>
+                </div>
+                <div class="rows scroll">
+                  ${a.junk.map(
+                    (n) => html`<div class="row"><div class="info"><div class="name">${n}</div></div></div>`
+                  )}
+                </div>
+                <p class="muted">
+                  Protected, never touched: ${a.protected.join(", ") || "none"}. To act on the
+                  ${a.junk.length} flagged, run the <code>alexa_curator.alexa_devices</code> action
+                  with <code>apply: true</code>.
+                </p>
+              `}
+      </section>
     `;
   }
 
@@ -514,6 +576,33 @@ export class AlexaPanel extends LitElement {
       font-size: 0.82rem;
       line-height: 1.4;
       margin: 0 4px 8px;
+    }
+    .alexa-exp {
+      margin-top: 30px;
+      border-top: 1px dashed var(--divider-color, #ccc);
+      padding-top: 16px;
+    }
+    .exp {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      background: var(--warning-color, #ff9800);
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      vertical-align: 2px;
+    }
+    .rows.scroll {
+      max-height: 240px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+    code {
+      background: var(--divider-color, #eee);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 0.85em;
     }
     [hidden] {
       display: none !important;
