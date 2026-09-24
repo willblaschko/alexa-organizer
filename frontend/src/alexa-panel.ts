@@ -288,24 +288,39 @@ export class AlexaPanel extends LitElement {
                 Unavailable: ${a.reason ?? "no session"}. Install and log into Alexa Media Player.
               </div>`
             : html`
-                <div class="actions">
-                  <span class="chip live" ?hidden=${!a.junk.length}>${a.junk.length} flagged</span>
-                  <span class="chip ghost">${a.protected.length} protected</span>
-                  <span class="chip ok">${a.keep.length} keep</span>
-                  <button class="apply" ?disabled=${this._alexaBusy || !a.junk.length}
-                    @click=${() => this._applyAlexa(5)}>
-                    ${this._alexaBusy ? "Working…" : "Remove 5"}
-                  </button>
-                  <button class="apply ghostbtn" ?disabled=${this._alexaBusy || !a.junk.length}
-                    @click=${() => this._applyAlexa(0)}>
-                    Remove all ${a.junk.length}
-                  </button>
+                <div class="applybar">
+                  <div class="chips">
+                    <span class="chip live" ?hidden=${!a.junk.length}>−${a.junk.length} remove</span>
+                    <span class="chip ghost">${a.protected.length} protected</span>
+                    <span class="chip ok">${a.keep.length} keep</span>
+                  </div>
+                  <div class="applybtns">
+                    <button class="apply ghostbtn" ?disabled=${this._alexaBusy || !a.junk.length}
+                      @click=${() => this._applyAlexa(5)}>Remove 5</button>
+                    <button class="apply" ?disabled=${this._alexaBusy || !a.junk.length}
+                      @click=${() => this._applyAlexa(0)}>
+                      ${this._alexaBusy ? "Working…" : `Remove all ${a.junk.length}`}
+                    </button>
+                  </div>
                 </div>
-                <div class="rows scroll">
-                  ${a.junk.map(
-                    (n) => html`<div class="row"><div class="info"><div class="name">${n}</div></div></div>`
-                  )}
-                </div>
+                ${a.junk.length
+                  ? this._junkGroups(a.junk).map(
+                      (g) => html`
+                        <div class="kindgroup">
+                          <h3>${g.label} <span class="count">${g.names.length}</span></h3>
+                          <div class="rows">
+                            ${g.names.map(
+                              (n) => html`<div class="row">
+                                <span class="minus">−</span>
+                                <div class="info"><div class="name">${n}</div></div>
+                                <span class="tag remove">remove</span>
+                              </div>`
+                            )}
+                          </div>
+                        </div>
+                      `
+                    )
+                  : html`<p class="muted">Nothing flagged — your device list is clean.</p>`}
                 <p class="muted">
                   Protected, never touched: ${a.protected.join(", ") || "none"}.
                 </p>
@@ -361,6 +376,33 @@ export class AlexaPanel extends LitElement {
         </div>
       </section>
     `;
+  }
+
+  private _junkGroups(names: string[]): Array<{ label: string; names: string[] }> {
+    const KINDS: Array<[string, string]> = [
+      ["echo buds", "Echo Buds"],
+      ["audible", "Audible app"],
+      ["amazon alexa on", "Alexa app"],
+      ["android device", "Android device"],
+      ["eero", "eero"],
+      ["simulator", "Simulators"],
+      ["shield", "Shield TV"],
+      ["luna", "Luna"],
+      ["pixel", "Phones"],
+    ];
+    const order = KINDS.map(([, l]) => l).concat("Other");
+    const groups = new Map<string, string[]>();
+    for (const n of names) {
+      const ln = n.toLowerCase();
+      const hit = KINDS.find(([kw]) => ln.includes(kw));
+      const label = hit ? hit[1] : "Other";
+      const arr = groups.get(label);
+      if (arr) arr.push(n);
+      else groups.set(label, [n]);
+    }
+    return [...groups.entries()]
+      .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
+      .map(([label, ns]) => ({ label, names: ns.slice().sort() }));
   }
 
   static override styles = css`
@@ -616,6 +658,34 @@ export class AlexaPanel extends LitElement {
     .ghostbtn {
       background: var(--secondary-background-color, #e0e0e0) !important;
       color: var(--primary-text-color, #212121) !important;
+    }
+    .applybar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .applybtns {
+      display: flex;
+      gap: 8px;
+    }
+    .minus {
+      flex: none;
+      width: 14px;
+      text-align: center;
+      font-weight: 700;
+      color: var(--error-color, #c62828);
+    }
+    .tag.remove {
+      background: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
+      color: var(--error-color, #c62828);
     }
     .rows.scroll {
       max-height: 240px;
