@@ -475,6 +475,8 @@ function e(e,t,s,i){var o,r=arguments.length,a=r<3?t:null===i?i=Object.getOwnPro
     .applybtns {
       display: flex;
       gap: 8px;
+      margin-left: auto;
+      align-items: center;
     }
     .minus {
       flex: none;

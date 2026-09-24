@@ -882,6 +882,8 @@ export class AlexaPanel extends LitElement {
     .applybtns {
       display: flex;
       gap: 8px;
+      margin-left: auto;
+      align-items: center;
     }
     .minus {
       flex: none;
