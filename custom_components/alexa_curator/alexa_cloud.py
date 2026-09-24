@@ -159,6 +159,35 @@ def plan_room_sync(area_names: list[str], groups: list[dict]) -> list[dict]:
     return ops
 
 
+# ── Room writes (create / rename / delete a room) ────────────────────────────
+
+_CREATE_GROUP = (
+    "mutation c($name:String!){createDeviceGroup(createDeviceGroupInput:{friendlyName:$name})"
+    "{deviceGroup{id}}}"
+)
+_RENAME_GROUP = (
+    "mutation r($id:String!,$name:String!){updateDeviceGroup(updateDeviceGroupInput:"
+    "{deviceGroupId:$id,friendlyName:$name}){deviceGroup{id}}}"
+)
+_DELETE_GROUP = (
+    "mutation d($id:String!){deleteDeviceGroup(deleteDeviceGroupInput:{deviceGroupId:$id})"
+    "{deviceGroupId}}"
+)
+
+
+async def async_create_group(hass, name: str, email: str | None = None) -> str:
+    node = await async_graphql(hass, {"query": _CREATE_GROUP, "variables": {"name": name}}, email)
+    return (((node.get("data") or {}).get("createDeviceGroup") or {}).get("deviceGroup") or {}).get("id") or ""
+
+
+async def async_rename_group(hass, group_id: str, name: str, email: str | None = None) -> None:
+    await async_graphql(hass, {"query": _RENAME_GROUP, "variables": {"id": group_id, "name": name}}, email)
+
+
+async def async_delete_group(hass, group_id: str, email: str | None = None) -> None:
+    await async_graphql(hass, {"query": _DELETE_GROUP, "variables": {"id": group_id}}, email)
+
+
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────
 
 _ENDPOINTS_QUERY = (

@@ -34,6 +34,9 @@ SERVICE_ALEXA_ROOMS = "alexa_rooms"
 # Experimental device cleanup: preview (default) or, with apply:true, deregister the
 # suggested-junk device registrations. Protected devices are never touched.
 SERVICE_ALEXA_DEVICES = "alexa_devices"
+# Experimental room sync: apply ONE room op (create / rename / delete) — the panel
+# calls this per op so it can show per-op status like the Chorus change bar.
+SERVICE_ROOM_OP = "room_op"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.

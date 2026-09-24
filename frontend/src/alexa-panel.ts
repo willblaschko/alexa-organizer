@@ -111,6 +111,8 @@ export class AlexaPanel extends LitElement {
   @state() private _detailsOpen = false;
   @state() private _roomPlan: RoomPlan | null = null;
   @state() private _roomBusy = false;
+  @state() private _roomInclude = new Set<string>(); // op keys to apply
+  @state() private _roomStatus: Record<string, string> = {}; // op key -> pending/running/done/error
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -333,25 +335,71 @@ export class AlexaPanel extends LitElement {
   }
 
   private get _hasPending(): boolean {
-    return this._hasExposure || this._alexaRemove.size > 0;
+    return this._hasExposure || this._alexaRemove.size > 0 || this._roomInclude.size > 0;
   }
 
   private async _applyAll(): Promise<void> {
-    if (this._busy || this._alexaBusy) return;
+    if (this._busy || this._alexaBusy || this._roomBusy) return;
     if (this._hasExposure) await this._apply(false);
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
+    if (this._roomInclude.size > 0) await this._applyRoomOps();
   }
 
   private async _loadRoomPlan(): Promise<void> {
     if (this._roomBusy) return;
     this._roomBusy = true;
     try {
-      this._roomPlan = await this.hass.connection.sendMessagePromise<RoomPlan>({
+      const plan = await this.hass.connection.sendMessagePromise<RoomPlan>({
         type: "alexa_curator/room_plan",
       });
+      this._roomPlan = plan;
+      const ops = plan.ops ?? [];
+      this._roomInclude = new Set(ops.filter((o) => o.suggested).map((o) => this._opKey(o)));
+      this._roomStatus = {};
     } finally {
       this._roomBusy = false;
     }
+  }
+
+  private _opKey(o: RoomOp): string {
+    return `${o.op}|${o.id ?? o.name}`;
+  }
+
+  private _toggleRoomOp(o: RoomOp): void {
+    const k = this._opKey(o);
+    const next = new Set(this._roomInclude);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    this._roomInclude = next;
+  }
+
+  private async _applyRoomOps(): Promise<void> {
+    const rank: Record<string, number> = { rename: 0, delete: 1, create: 2 };
+    const ops = (this._roomPlan?.ops ?? [])
+      .filter((o) => this._roomInclude.has(this._opKey(o)))
+      .sort((a, b) => rank[a.op] - rank[b.op]);
+    for (const o of ops) {
+      const k = this._opKey(o);
+      this._roomStatus = { ...this._roomStatus, [k]: "running" };
+      const data: Record<string, unknown> = { action: o.op };
+      if (o.id) data.id = o.id;
+      if (o.op === "rename") data.name = o.to;
+      if (o.op === "create") data.name = o.name;
+      try {
+        await this.hass.callService("alexa_curator", "room_op", data);
+        this._roomStatus = { ...this._roomStatus, [k]: "done" };
+      } catch {
+        this._roomStatus = { ...this._roomStatus, [k]: "error" };
+      }
+    }
+    await this._loadRoomPlan();
+  }
+
+  private _statusDisc(s?: string): TemplateResult {
+    if (s === "done") return html`<span class="state done">✓</span>`;
+    if (s === "error") return html`<span class="state error">✗</span>`;
+    if (s === "running") return html`<span class="state running"></span>`;
+    return html`<span class="state pending"></span>`;
   }
 
   private _roomSection(): TemplateResult {
@@ -361,7 +409,8 @@ export class AlexaPanel extends LitElement {
         <h2>Alexa rooms <span class="exp">experimental</span></h2>
         <p class="muted">
           Mirror your Home Assistant areas into Alexa's rooms — rename to match, clear the ghost
-          rooms, and create any that are missing. Preview only for now; applying comes next.
+          rooms, and (opt-in) create the missing ones. Toggle each op On/Off; Apply runs them
+          from the bar below.
         </p>
         ${!p
           ? html`<button class="apply" ?disabled=${this._roomBusy} @click=${this._loadRoomPlan}>
@@ -380,54 +429,43 @@ export class AlexaPanel extends LitElement {
     if (!ops.length) {
       return html`<p class="muted">Your Alexa rooms already match your HA areas. Nothing to do.</p>`;
     }
-    const renames = ops.filter((o) => o.op === "rename");
-    const deletes = ops.filter((o) => o.op === "delete");
-    const creates = ops.filter((o) => o.op === "create");
+    const group = (label: string, list: RoomOp[]): TemplateResult | typeof nothing =>
+      list.length
+        ? html`<div class="kindgroup">
+            <h3>${label} <span class="count">${list.length}</span></h3>
+            <div class="rows">${list.map((o) => this._opRow(o))}</div>
+          </div>`
+        : nothing;
     return html`
-      ${renames.length
-        ? html`<div class="kindgroup">
-            <h3>Rename to match HA <span class="count">${renames.length}</span></h3>
-            <div class="rows">
-              ${renames.map(
-                (o) => html`<div class="row">
-                  <div class="info"><div class="name">${o.from} → ${o.to}</div></div>
-                  <span class="tag">rename</span>
-                </div>`
-              )}
-            </div>
-          </div>`
-        : nothing}
-      ${deletes.length
-        ? html`<div class="kindgroup">
-            <h3>Ghost rooms <span class="count">${deletes.length}</span></h3>
-            <div class="rows">
-              ${deletes.map(
-                (o) => html`<div class="row ${o.suggested ? "removing" : ""}">
-                  ${o.suggested ? html`<span class="minus">−</span>` : nothing}
-                  <div class="info">
-                    <div class="name">${o.name}</div>
-                    <div class="meta">${o.empty ? "empty — no HA area" : "has devices — kept by default"}</div>
-                  </div>
-                  <span class="tag ${o.suggested ? "remove" : ""}">${o.suggested ? "delete" : "keep"}</span>
-                </div>`
-              )}
-            </div>
-          </div>`
-        : nothing}
-      ${creates.length
-        ? html`<div class="kindgroup">
-            <h3>Missing rooms (opt-in) <span class="count">${creates.length}</span></h3>
-            <div class="rows">
-              ${creates.map(
-                (o) => html`<div class="row">
-                  <span class="plus">+</span>
-                  <div class="info"><div class="name">${o.name}</div></div>
-                  <span class="tag">create</span>
-                </div>`
-              )}
-            </div>
-          </div>`
-        : nothing}
+      ${group("Rename to match HA", ops.filter((o) => o.op === "rename"))}
+      ${group("Ghost rooms", ops.filter((o) => o.op === "delete"))}
+      ${group("Missing rooms (opt-in)", ops.filter((o) => o.op === "create"))}
+    `;
+  }
+
+  private _opRow(o: RoomOp): TemplateResult {
+    const k = this._opKey(o);
+    const included = this._roomInclude.has(k);
+    const busy = this._busy || this._alexaBusy || this._roomBusy;
+    return html`
+      <div class="row ${o.op === "delete" && included ? "removing" : ""}">
+        ${this._statusDisc(this._roomStatus[k])}
+        <div class="info">
+          <div class="name">${o.op === "rename" ? html`${o.from} → ${o.to}` : o.name}</div>
+          <div class="meta">
+            <span class="kind">${o.op}</span>
+            ${o.op === "delete" ? (o.empty ? "empty — no HA area" : "has devices") : nothing}
+          </div>
+        </div>
+        <button
+          class="toggle ${included ? "on" : "off"}"
+          ?disabled=${busy}
+          @click=${() => this._toggleRoomOp(o)}
+          title=${included ? "Will apply — click to skip" : "Skipped — click to include"}
+        >
+          ${included ? "On" : "Off"}
+        </button>
+      </div>
     `;
   }
 
@@ -511,7 +549,8 @@ export class AlexaPanel extends LitElement {
   private _deltaBar(): TemplateResult {
     const s = this._summary;
     const dev = this._alexaRemove.size;
-    const busy = this._busy || this._alexaBusy;
+    const rooms = this._roomInclude.size;
+    const busy = this._busy || this._alexaBusy || this._roomBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -521,6 +560,7 @@ export class AlexaPanel extends LitElement {
             <span class="chip live" ?hidden=${!s.live_remove}>−${s.live_remove} unexpose</span>
             <span class="chip ghost" ?hidden=${!s.ghost_remove}>−${s.ghost_remove} stale</span>
             <span class="chip live" ?hidden=${!dev}>−${dev} device${dev === 1 ? "" : "s"}</span>
+            <span class="chip add" ?hidden=${!rooms}>${rooms} room${rooms === 1 ? "" : "s"}</span>
           </div>
           <div class="applybtns">
             <button class="link" @click=${() => (this._detailsOpen = !this._detailsOpen)}>
@@ -542,6 +582,8 @@ export class AlexaPanel extends LitElement {
       .filter((d) => this._alexaRemove.has(d.id))
       .map((d) => d.name)
       .sort();
+    const roomOps = (this._roomPlan?.ops ?? []).filter((o) => this._roomInclude.has(this._opKey(o)));
+    const empty = !changed.length && !this._ghosts.length && !devNames.length && !roomOps.length;
     return html`
       <div class="deltadetails">
         ${changed.map(
@@ -556,9 +598,15 @@ export class AlexaPanel extends LitElement {
         ${devNames.map(
           (n) => html`<div class="dline"><span class="minus">−</span> remove device · ${n}</div>`
         )}
-        ${!changed.length && !this._ghosts.length && !devNames.length
-          ? html`<div class="dline muted">No pending changes.</div>`
-          : nothing}
+        ${roomOps.map(
+          (o) => html`<div class="dline">
+            <span class="${o.op === "create" ? "plus" : "minus"}">
+              ${o.op === "create" ? "+" : o.op === "delete" ? "−" : "~"}
+            </span>
+            ${o.op} room · ${o.op === "rename" ? html`${o.from} → ${o.to}` : o.name}
+          </div>`
+        )}
+        ${empty ? html`<div class="dline muted">No pending changes.</div>` : nothing}
       </div>
     `;
   }
@@ -988,6 +1036,43 @@ export class AlexaPanel extends LitElement {
       width: 14px;
       text-align: center;
       flex: none;
+    }
+    .state {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .state.pending {
+      width: 8px;
+      height: 8px;
+      margin: 0 5px;
+      background: var(--divider-color, #cfcfcf);
+    }
+    .state.running {
+      border: 2px solid var(--divider-color, #ddd);
+      border-top-color: var(--primary-color, #03a9f4);
+      animation: spin 0.7s linear infinite;
+    }
+    .state.done {
+      background: var(--success-color, #2e7d32);
+      color: #fff;
+    }
+    .state.error {
+      background: var(--error-color, #c62828);
+      color: #fff;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
     .rows.scroll {
       max-height: 240px;

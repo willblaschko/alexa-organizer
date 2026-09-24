@@ -27,6 +27,7 @@ from .const import (
     SERVICE_ALEXA_ROOMS,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
+    SERVICE_ROOM_OP,
 )
 from .panel import async_register_panel, async_unregister_panel
 
@@ -37,6 +38,7 @@ _ALL_SERVICES = (
     SERVICE_PREVIEW,
     SERVICE_ALEXA_ROOMS,
     SERVICE_ALEXA_DEVICES,
+    SERVICE_ROOM_OP,
 )
 
 
@@ -228,6 +230,23 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW, preview)
     hass.services.async_register(DOMAIN, SERVICE_ALEXA_ROOMS, alexa_rooms)
+    async def room_op(call: ServiceCall) -> None:
+        # Apply ONE room op; the panel calls this per op to show per-op status.
+        from . import alexa_cloud
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        action = call.data["action"]
+        try:
+            if action == "create":
+                await alexa_cloud.async_create_group(hass, call.data["name"])
+            elif action == "rename":
+                await alexa_cloud.async_rename_group(hass, call.data["id"], call.data["name"])
+            elif action == "delete":
+                await alexa_cloud.async_delete_group(hass, call.data["id"])
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            raise HomeAssistantError(str(err)) from err
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_ALEXA_DEVICES,
@@ -237,6 +256,18 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Optional("apply", default=False): bool,
                 vol.Optional("limit"): vol.All(vol.Coerce(int), vol.Range(min=0)),
                 vol.Optional("endpoint_ids"): [str],
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ROOM_OP,
+        room_op,
+        schema=vol.Schema(
+            {
+                vol.Required("action"): vol.In(["create", "rename", "delete"]),
+                vol.Optional("id"): str,
+                vol.Optional("name"): str,
             }
         ),
     )
