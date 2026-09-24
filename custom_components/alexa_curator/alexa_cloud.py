@@ -103,6 +103,62 @@ async def async_list_groups(hass, email: str | None = None) -> list[dict]:
     return (((node.get("data") or {}).get("listDeviceGroups") or {}).get("deviceGroups")) or []
 
 
+# ── Room sync: HA areas (desired) vs Alexa rooms (current) ────────────────────
+
+
+def _group_name(g: dict) -> str:
+    return ((g.get("friendlyName") or {}).get("value") or {}).get("text") or "(unnamed)"
+
+
+def _group_member_count(g: dict) -> int:
+    return len((g.get("memberDevices") or {}).get("items") or [])
+
+
+def ha_area_names(hass) -> list[str]:
+    """The Home Assistant area names — the desired Alexa room list."""
+    from homeassistant.helpers import area_registry as ar  # lazy
+
+    return sorted((a.name for a in ar.async_get(hass).areas.values()), key=str.lower)
+
+
+def plan_room_sync(area_names: list[str], groups: list[dict]) -> list[dict]:
+    """Delta from HA areas → Alexa rooms as reviewable ops (suggestions only).
+
+    - rename: an Alexa room matches an HA area by name (case-insensitive) but the exact
+      text differs → line it up with HA.
+    - create: an HA area with no Alexa room (suggested OFF — not every area wants one).
+    - delete: an Alexa room with no matching HA area; suggested ON only when it's EMPTY
+      (a ghost / bond artifact), left alone when it still holds devices.
+    """
+
+    def norm(s: str) -> str:
+        return s.strip().lower()
+
+    groups_by_norm = {norm(_group_name(g)): g for g in groups}
+    areas_by_norm = {norm(a): a for a in area_names}
+    ops: list[dict] = []
+    matched: set[str] = set()
+
+    for n, area in areas_by_norm.items():
+        g = groups_by_norm.get(n)
+        if g is not None:
+            matched.add(n)
+            gname = _group_name(g)
+            if gname != area:
+                ops.append({"op": "rename", "id": g["id"], "from": gname, "to": area, "suggested": True})
+        else:
+            ops.append({"op": "create", "name": area, "suggested": False})
+
+    for n, g in groups_by_norm.items():
+        if n in matched or n in areas_by_norm:
+            continue
+        empty = _group_member_count(g) == 0
+        ops.append(
+            {"op": "delete", "id": g["id"], "name": _group_name(g), "empty": empty, "suggested": empty}
+        )
+    return ops
+
+
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────
 
 _ENDPOINTS_QUERY = (

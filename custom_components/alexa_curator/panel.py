@@ -56,6 +56,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_set)
         websocket_api.async_register_command(hass, ws_apply)
         websocket_api.async_register_command(hass, ws_alexa_devices)
+        websocket_api.async_register_command(hass, ws_room_plan)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -161,3 +162,18 @@ async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
         return
     devices = sorted(alexa_cloud.annotate_devices(endpoints), key=lambda d: d["name"].lower())
     connection.send_result(msg["id"], {"available": True, "devices": devices})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/room_plan"})
+@websocket_api.async_response
+async def ws_room_plan(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: the HA-areas → Alexa-rooms delta (create / rename / delete ops)."""
+    from . import alexa_cloud
+
+    try:
+        groups = await alexa_cloud.async_list_groups(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    ops = alexa_cloud.plan_room_sync(alexa_cloud.ha_area_names(hass), groups)
+    connection.send_result(msg["id"], {"available": True, "ops": ops})

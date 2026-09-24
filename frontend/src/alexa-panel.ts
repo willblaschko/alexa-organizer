@@ -22,6 +22,22 @@ interface AlexaDevices {
   devices?: AlexaDevice[];
 }
 
+interface RoomOp {
+  op: "create" | "rename" | "delete";
+  id?: string;
+  name?: string;
+  from?: string;
+  to?: string;
+  empty?: boolean;
+  suggested: boolean;
+}
+
+interface RoomPlan {
+  available: boolean;
+  reason?: string;
+  ops?: RoomOp[];
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -93,6 +109,8 @@ export class AlexaPanel extends LitElement {
   @state() private _alexaBusy = false;
   @state() private _alexaRemove = new Set<string>(); // endpoint ids toggled for removal
   @state() private _detailsOpen = false;
+  @state() private _roomPlan: RoomPlan | null = null;
+  @state() private _roomBusy = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -278,6 +296,7 @@ export class AlexaPanel extends LitElement {
           `
         )}
         ${this._ghosts.length ? this._ghostSection() : nothing}
+        ${this._roomSection()}
         ${this._alexaSection()}
       </div>
       ${this._hasPending ? this._deltaBar() : nothing}
@@ -296,6 +315,95 @@ export class AlexaPanel extends LitElement {
     if (this._busy || this._alexaBusy) return;
     if (this._hasExposure) await this._apply(false);
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
+  }
+
+  private async _loadRoomPlan(): Promise<void> {
+    if (this._roomBusy) return;
+    this._roomBusy = true;
+    try {
+      this._roomPlan = await this.hass.connection.sendMessagePromise<RoomPlan>({
+        type: "alexa_curator/room_plan",
+      });
+    } finally {
+      this._roomBusy = false;
+    }
+  }
+
+  private _roomSection(): TemplateResult {
+    const p = this._roomPlan;
+    return html`
+      <section class="alexa-exp">
+        <h2>Alexa rooms <span class="exp">experimental</span></h2>
+        <p class="muted">
+          Mirror your Home Assistant areas into Alexa's rooms — rename to match, clear the ghost
+          rooms, and create any that are missing. Preview only for now; applying comes next.
+        </p>
+        ${!p
+          ? html`<button class="apply" ?disabled=${this._roomBusy} @click=${this._loadRoomPlan}>
+              ${this._roomBusy ? "Loading…" : "Preview room sync"}
+            </button>`
+          : p.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${p.reason ?? "no session"}. Needs Alexa Media Player logged in.
+              </div>`
+            : this._roomPlanBody(p.ops ?? [])}
+      </section>
+    `;
+  }
+
+  private _roomPlanBody(ops: RoomOp[]): TemplateResult {
+    if (!ops.length) {
+      return html`<p class="muted">Your Alexa rooms already match your HA areas. Nothing to do.</p>`;
+    }
+    const renames = ops.filter((o) => o.op === "rename");
+    const deletes = ops.filter((o) => o.op === "delete");
+    const creates = ops.filter((o) => o.op === "create");
+    return html`
+      ${renames.length
+        ? html`<div class="kindgroup">
+            <h3>Rename to match HA <span class="count">${renames.length}</span></h3>
+            <div class="rows">
+              ${renames.map(
+                (o) => html`<div class="row">
+                  <div class="info"><div class="name">${o.from} → ${o.to}</div></div>
+                  <span class="tag">rename</span>
+                </div>`
+              )}
+            </div>
+          </div>`
+        : nothing}
+      ${deletes.length
+        ? html`<div class="kindgroup">
+            <h3>Ghost rooms <span class="count">${deletes.length}</span></h3>
+            <div class="rows">
+              ${deletes.map(
+                (o) => html`<div class="row ${o.suggested ? "removing" : ""}">
+                  ${o.suggested ? html`<span class="minus">−</span>` : nothing}
+                  <div class="info">
+                    <div class="name">${o.name}</div>
+                    <div class="meta">${o.empty ? "empty — no HA area" : "has devices — kept by default"}</div>
+                  </div>
+                  <span class="tag ${o.suggested ? "remove" : ""}">${o.suggested ? "delete" : "keep"}</span>
+                </div>`
+              )}
+            </div>
+          </div>`
+        : nothing}
+      ${creates.length
+        ? html`<div class="kindgroup">
+            <h3>Missing rooms (opt-in) <span class="count">${creates.length}</span></h3>
+            <div class="rows">
+              ${creates.map(
+                (o) => html`<div class="row">
+                  <span class="plus">+</span>
+                  <div class="info"><div class="name">${o.name}</div></div>
+                  <span class="tag">create</span>
+                </div>`
+              )}
+            </div>
+          </div>`
+        : nothing}
+    `;
   }
 
   private _alexaSection(): TemplateResult {
