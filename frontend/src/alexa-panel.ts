@@ -48,8 +48,21 @@ const DOMAIN_CHIP: Record<string, string> = {
   camera: "Camera",
   input_boolean: "Toggle",
 };
-const DOMAIN_ORDER = Object.keys(DOMAIN_CHIP);
 const NO_ROOM = "No room";
+
+// Opinionated within-room type grouping. Lighting collapses light + switch (a
+// switch or plug driving a light is, to a voice user, a light). Order here is the
+// order sections appear in each room; any domain not listed falls into "Other".
+const KIND_GROUPS: ReadonlyArray<{ label: string; domains: readonly string[] }> = [
+  { label: "Lighting", domains: ["light", "switch"] },
+  { label: "Speakers", domains: ["media_player"] },
+  { label: "Climate", domains: ["climate", "fan"] },
+  { label: "Scenes & routines", domains: ["scene", "script"] },
+  { label: "Other", domains: ["cover", "vacuum", "lock", "camera", "input_boolean"] },
+];
+const KIND_OF: Record<string, number> = {};
+KIND_GROUPS.forEach((g, i) => g.domains.forEach((d) => (KIND_OF[d] = i)));
+const kindIndex = (domain: string) => KIND_OF[domain] ?? KIND_GROUPS.length - 1;
 
 @customElement("alexa-panel")
 export class AlexaPanel extends LitElement {
@@ -121,14 +134,9 @@ export class AlexaPanel extends LitElement {
     return s.expose + s.live_remove + s.ghost_remove === 0;
   }
 
-  // Group rows by HA Area — a 1:1 mirror of the rooms in Home Assistant. Entities
-  // with no area fall into a "No room" section (sorted last); within each room, rows
-  // are ordered by kind (speakers, lights, …) then name.
-  private _rooms(): Array<{ area: string; rows: Row[] }> {
-    const rank = (d: string) => {
-      const i = DOMAIN_ORDER.indexOf(d);
-      return i < 0 ? 99 : i;
-    };
+  // Group by HA Area (a 1:1 mirror of the rooms in HA), then by opinionated type
+  // group within each room. Entities with no area fall into "No room" (last).
+  private _rooms(): Array<{ area: string; groups: Array<{ label: string; rows: Row[] }> }> {
     const byArea = new Map<string, Row[]>();
     for (const r of this._rows) {
       if (r.ghost) continue;
@@ -142,13 +150,15 @@ export class AlexaPanel extends LitElement {
       if (b === "") return -1;
       return a.localeCompare(b);
     });
-    return areas.map((a) => ({
-      area: a === "" ? NO_ROOM : a,
-      rows: byArea
-        .get(a)!
-        .slice()
-        .sort((x, y) => rank(x.domain) - rank(y.domain) || x.name.localeCompare(y.name)),
-    }));
+    return areas.map((a) => {
+      const buckets: Row[][] = KIND_GROUPS.map(() => []);
+      for (const r of byArea.get(a)!) buckets[kindIndex(r.domain)].push(r);
+      const groups = KIND_GROUPS.map((g, i) => ({
+        label: g.label,
+        rows: buckets[i].slice().sort((x, y) => x.name.localeCompare(y.name)),
+      })).filter((g) => g.rows.length > 0);
+      return { area: a === "" ? NO_ROOM : a, groups };
+    });
   }
 
   private get _ghosts(): Row[] {
@@ -200,10 +210,20 @@ export class AlexaPanel extends LitElement {
           : nothing}
 
         ${this._rooms().map(
-          (g) => html`
-            <section>
-              <h2>${g.area} <span class="count">${g.rows.length}</span></h2>
-              <div class="rows">${g.rows.map((r) => this._row(r))}</div>
+          (room) => html`
+            <section class="room">
+              <h2>
+                ${room.area}
+                <span class="count">${room.groups.reduce((n, g) => n + g.rows.length, 0)}</span>
+              </h2>
+              ${room.groups.map(
+                (g) => html`
+                  <div class="kindgroup">
+                    <h3>${g.label}</h3>
+                    <div class="rows">${g.rows.map((r) => this._row(r))}</div>
+                  </div>
+                `
+              )}
             </section>
           `
         )}
@@ -365,15 +385,28 @@ export class AlexaPanel extends LitElement {
     section {
       margin-bottom: 20px;
     }
+    section.room {
+      margin-bottom: 26px;
+    }
     h2 {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.78rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--primary-text-color, #212121);
+      margin: 4px 4px 6px;
+    }
+    h3 {
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.05em;
+      font-weight: 700;
       color: var(--secondary-text-color, #727272);
-      margin: 0 4px 8px;
+      margin: 14px 4px 6px;
+    }
+    .kindgroup:first-of-type h3 {
+      margin-top: 6px;
     }
     .count {
       font-weight: 400;
