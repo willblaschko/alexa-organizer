@@ -1,13 +1,13 @@
 {
-  "domain": "alexa_curator",
-  "name": "Alexa Curator",
+  "domain": "alexa_organizer",
+  "name": "Alexa Organizer",
   "codeowners": ["@willblaschko"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "websocket_api"],
   "after_dependencies": ["cloud", "alexa_media"],
-  "documentation": "https://github.com/willblaschko/alexa-curator",
+  "documentation": "https://github.com/willblaschko/alexa-organizer",
   "integration_type": "hub",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/willblaschko/alexa-curator/issues",
+  "issue_tracker": "https://github.com/willblaschko/alexa-organizer/issues",
   "version": "0.1.0"
 }

@@ -7,7 +7,7 @@ import terser from "@rollup/plugin-terser";
 export default {
   input: "src/alexa-panel.ts",
   output: {
-    file: "../custom_components/alexa_curator/frontend/alexa-panel.js",
+    file: "../custom_components/alexa_organizer/frontend/alexa-panel.js",
     format: "es",
     sourcemap: false,
   },
@@ -15,7 +15,7 @@ export default {
     resolve(),
     typescript({
       tsconfig: "./tsconfig.json",
-      outDir: "../custom_components/alexa_curator/frontend",
+      outDir: "../custom_components/alexa_organizer/frontend",
     }),
     terser({ format: { comments: false } }),
   ],

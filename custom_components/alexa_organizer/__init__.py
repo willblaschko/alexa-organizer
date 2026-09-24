@@ -1,4 +1,4 @@
-"""Alexa Curator — make Home Assistant the source of truth for what Alexa sees.
+"""Alexa Organizer — make Home Assistant the source of truth for what Alexa sees.
 
 Phase 1 is the reconcile engine: a hardcoded, opinionated policy computes the
 desired Alexa-exposed set, diffs it against the current exposure, and applies
@@ -45,13 +45,13 @@ _ALL_SERVICES = (
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Alexa Curator from a config entry."""
+    """Set up Alexa Organizer from a config entry."""
     # We own the "expose new entities" default — keep it OFF so nothing reaches
     # Alexa except through the policy (matches the Phase 0 manual state).
     try:
         exposure.set_expose_new(hass, False)
     except exposure.ExposureUnavailable as err:
-        _LOGGER.warning("Alexa Curator: couldn't set expose-new OFF (%s); continuing", err)
+        _LOGGER.warning("Alexa Organizer: couldn't set expose-new OFF (%s); continuing", err)
 
     async def _run_reconcile() -> None:
         try:
@@ -119,8 +119,8 @@ def _register_services(hass: HomeAssistant) -> None:
         persistent_notification.async_create(
             hass,
             engine.describe(diff),
-            title="Alexa Curator — preview",
-            notification_id="alexa_curator_preview",
+            title="Alexa Organizer — preview",
+            notification_id="alexa_organizer_preview",
         )
 
     async def alexa_rooms(_call: ServiceCall) -> None:
@@ -137,8 +137,8 @@ def _register_services(hass: HomeAssistant) -> None:
                 hass,
                 f"Alexa Room Sync (experimental) couldn't reach Alexa: {err}. "
                 "It needs the Alexa Media Player integration installed and logged in.",
-                title="Alexa Curator — Alexa rooms",
-                notification_id="alexa_curator_rooms",
+                title="Alexa Organizer — Alexa rooms",
+                notification_id="alexa_organizer_rooms",
             )
             return
 
@@ -152,8 +152,8 @@ def _register_services(hass: HomeAssistant) -> None:
         persistent_notification.async_create(
             hass,
             f"{len(groups)} Alexa rooms (read-only, via Alexa Media Player):\n" + "\n".join(lines),
-            title="Alexa Curator — Alexa rooms",
-            notification_id="alexa_curator_rooms",
+            title="Alexa Organizer — Alexa rooms",
+            notification_id="alexa_organizer_rooms",
         )
 
     async def alexa_devices(call: ServiceCall) -> None:
@@ -166,8 +166,8 @@ def _register_services(hass: HomeAssistant) -> None:
 
         def _notify(msg: str) -> None:
             persistent_notification.async_create(
-                hass, msg, title="Alexa Curator — device cleanup",
-                notification_id="alexa_curator_devices",
+                hass, msg, title="Alexa Organizer — device cleanup",
+                notification_id="alexa_organizer_devices",
             )
 
         try:

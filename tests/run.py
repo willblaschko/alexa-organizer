@@ -12,7 +12,7 @@ import sys
 import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PKG = os.path.join(os.path.dirname(HERE), "custom_components", "alexa_curator")
+PKG = os.path.join(os.path.dirname(HERE), "custom_components", "alexa_organizer")
 for p in (PKG, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)

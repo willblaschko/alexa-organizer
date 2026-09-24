@@ -1,4 +1,4 @@
-"""Constants and the exposure policy tables for Alexa Curator.
+"""Constants and the exposure policy tables for Alexa Organizer.
 
 This module is PURE (stdlib only, no `homeassistant` imports) so the policy
 tiers and tunables can be imported and unit-tested without a running HA — the
@@ -6,7 +6,7 @@ same split Chorus uses for const.py/sonos.py.
 """
 from __future__ import annotations
 
-DOMAIN = "alexa_curator"
+DOMAIN = "alexa_organizer"
 
 # The Nabu Casa Alexa assistant id (verified against HA's KNOWN_ASSISTANTS —
 # homeassistant.components.homeassistant.exposed_entities).

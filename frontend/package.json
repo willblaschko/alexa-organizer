@@ -1,9 +1,9 @@
 {
-  "name": "alexa-curator-frontend",
+  "name": "alexa-organizer-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Alexa Curator sidebar panel (Lit) — built into custom_components/alexa_curator/frontend/",
+  "description": "Alexa Organizer sidebar panel (Lit) — built into custom_components/alexa_organizer/frontend/",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",

@@ -166,7 +166,7 @@ export class AlexaPanel extends LitElement {
     this._loading = true;
     try {
       const inv = await this.hass.connection.sendMessagePromise<Inventory>({
-        type: "alexa_curator/inventory",
+        type: "alexa_organizer/inventory",
       });
       this._ingest(inv);
     } finally {
@@ -185,7 +185,7 @@ export class AlexaPanel extends LitElement {
     this._busy = true;
     try {
       const inv = await this.hass.connection.sendMessagePromise<Inventory>({
-        type: "alexa_curator/set",
+        type: "alexa_organizer/set",
         entity_id: row.entity_id,
         expose: !row.desired,
       });
@@ -202,7 +202,7 @@ export class AlexaPanel extends LitElement {
       const res = await this.hass.connection.sendMessagePromise<{
         held: boolean;
         inventory: Inventory;
-      }>({ type: "alexa_curator/apply", force });
+      }>({ type: "alexa_organizer/apply", force });
       this._held = res.held;
       this._ingest(res.inventory);
     } finally {
@@ -215,7 +215,7 @@ export class AlexaPanel extends LitElement {
     this._alexaBusy = true;
     try {
       const res = await this.hass.connection.sendMessagePromise<AlexaDevices>({
-        type: "alexa_curator/alexa_devices",
+        type: "alexa_organizer/alexa_devices",
       });
       this._alexa = res;
       // Seed the removal set from the generic suggestions (never protected).
@@ -239,12 +239,12 @@ export class AlexaPanel extends LitElement {
     if (this._alexaBusy || this._alexaRemove.size === 0) return;
     this._alexaBusy = true;
     try {
-      await this.hass.callService("alexa_curator", "alexa_devices", {
+      await this.hass.callService("alexa_organizer", "alexa_devices", {
         apply: true,
         endpoint_ids: [...this._alexaRemove],
       });
       const res = await this.hass.connection.sendMessagePromise<AlexaDevices>({
-        type: "alexa_curator/alexa_devices",
+        type: "alexa_organizer/alexa_devices",
       });
       this._alexa = res;
       const present = new Set((res.devices ?? []).map((d) => d.id));
@@ -299,7 +299,7 @@ export class AlexaPanel extends LitElement {
       <div class="wrap">
         <header>
           <div class="titles">
-            <h1>Alexa Curator</h1>
+            <h1>Alexa Organizer</h1>
             <p class="sub">
               Grouped by your Home Assistant areas. Controls what Alexa sees — organize the
               actual rooms &amp; groups in the Alexa app.
@@ -375,7 +375,7 @@ export class AlexaPanel extends LitElement {
     this._roomBusy = true;
     try {
       const plan = await this.hass.connection.sendMessagePromise<RoomPlan>({
-        type: "alexa_curator/room_plan",
+        type: "alexa_organizer/room_plan",
       });
       this._roomPlan = plan;
       const ops = plan.ops ?? [];
@@ -411,7 +411,7 @@ export class AlexaPanel extends LitElement {
       if (o.op === "rename") data.name = o.to;
       if (o.op === "create") data.name = o.name;
       try {
-        await this.hass.callService("alexa_curator", "room_op", data);
+        await this.hass.callService("alexa_organizer", "room_op", data);
         this._roomStatus = { ...this._roomStatus, [k]: "done" };
       } catch {
         this._roomStatus = { ...this._roomStatus, [k]: "error" };
@@ -499,7 +499,7 @@ export class AlexaPanel extends LitElement {
     this._deviceRoomsBusy = true;
     try {
       this._deviceRooms = await this.hass.connection.sendMessagePromise<DeviceRoomsData>({
-        type: "alexa_curator/device_rooms",
+        type: "alexa_organizer/device_rooms",
       });
       this._moves = {};
       this._moveStatus = {};
@@ -533,7 +533,7 @@ export class AlexaPanel extends LitElement {
       if (d.room_id) data.from = d.room_id;
       if (to) data.to = to;
       try {
-        await this.hass.callService("alexa_curator", "move_device", data);
+        await this.hass.callService("alexa_organizer", "move_device", data);
         this._moveStatus = { ...this._moveStatus, [id]: "done" };
       } catch {
         this._moveStatus = { ...this._moveStatus, [id]: "error" };

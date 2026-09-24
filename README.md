@@ -1,4 +1,4 @@
-# Alexa Curator
+# Alexa Organizer
 
 **Make Home Assistant the source of truth for what Alexa sees.**
 
@@ -6,7 +6,7 @@ Home Assistant exposes *entities*; Alexa wants *things you'd say out loud*. The 
 those is why keeping Alexa in sync is miserable — a flood of 1,000 entities, endless pruning
 and re-organizing in the Alexa app, and devices that quietly drop out of their rooms.
 
-Alexa Curator is **opinionated**. Instead of handing you a flat list to manage by hand, it
+Alexa Organizer is **opinionated**. Instead of handing you a flat list to manage by hand, it
 ships a strong policy about what belongs in Alexa, exposes exactly that, and keeps it in sync
 as you add rooms and devices — while staying out of the way of the things Alexa alone controls.
 
@@ -20,7 +20,7 @@ as you add rooms and devices — while staying out of the way of the things Alex
   exposed — room speakers, lights (that live in a room), climate, scenes, covers, fans, and
   the handful of scripts you tag as voice scenes. Sensors, buttons, config toggles, diagnostic
   junk: never.
-- **Stays in sync automatically.** Add a bulb, add a room, re-home a device — Alexa Curator
+- **Stays in sync automatically.** Add a bulb, add a room, re-home a device — Alexa Organizer
   reconciles exposure within seconds. No trip to the Alexa app.
 - **Owns the "expose new entities" default.** It keeps that OFF for Alexa, so nothing leaks in
   except through the policy.
@@ -43,7 +43,7 @@ Most "drift" isn't you — it's **churn**. When a device is unexposed→re-expos
 so "play music in the office" or "turn on the kitchen lights" stops finding it until you
 re-add it in the app.
 
-Alexa Curator is built around never causing that:
+Alexa Organizer is built around never causing that:
 
 - It applies **only genuine changes** — an entity already in the right state is never touched
   (no flapping).
@@ -88,9 +88,9 @@ batch of those is held with a notification until you approve it (see `max_remova
 
 ## Install
 
-HACS → ⋮ → **Custom repositories** → add `https://github.com/willblaschko/alexa-curator`
+HACS → ⋮ → **Custom repositories** → add `https://github.com/willblaschko/alexa-organizer`
 (category: *Integration*) → install → restart HA → **Settings › Devices & Services › Add
-Integration › Alexa Curator**.
+Integration › Alexa Organizer**.
 
 **Requirements:**
 - **Home Assistant Cloud (Nabu Casa)** with Alexa enabled — the exposure path (the whole core).
@@ -101,16 +101,16 @@ Integration › Alexa Curator**.
 
 ## Use it
 
-Open **Alexa Curator** in the sidebar (admin only): a dashboard grouped by your HA areas, then
+Open **Alexa Organizer** in the sidebar (admin only): a dashboard grouped by your HA areas, then
 by type (Lighting, Speakers, Climate, …), with a one-click on/off per entity — toggling writes
 the `alexa` / `alexa-hide` label for you — a live preview of pending changes (split into live
 vs. stale/ghost), and an **Apply** button.
 
 Or drive it from two services (Developer Tools › Actions):
 
-- **`alexa_curator.preview`** — dry run. Reports what *would* change (a notification + the log),
+- **`alexa_organizer.preview`** — dry run. Reports what *would* change (a notification + the log),
   split into live vs. stale/ghost removals; changes nothing. **Run this first.**
-- **`alexa_curator.reconcile`** — apply now (respects the fail-safe hold). Takes an optional
+- **`alexa_organizer.reconcile`** — apply now (respects the fail-safe hold). Takes an optional
   **`max_removals`** to raise the live-removal guard for one run — use a high value for the
   initial cleanup after you've reviewed a preview; omit it for the safe default afterward.
 
@@ -118,7 +118,7 @@ Otherwise it runs itself: on startup and whenever your entities or areas change.
 
 ## Experimental: Alexa Room Sync
 
-> ⚠️ **Experimental, opt-in, and off by default.** This is the one part of Alexa Curator that
+> ⚠️ **Experimental, opt-in, and off by default.** This is the one part of Alexa Organizer that
 > leaves the safe, local path. It is **not** part of the robust exposure core and can break at
 > any time.
 
@@ -135,7 +135,7 @@ anyone. Room Sync uses Alexa's **internal, undocumented GraphQL API** (the same 
 app uses), reached by piggybacking the Amazon session held by the
 [Alexa Media Player](https://github.com/alandtse/alexa_media_player) integration. So it
 **requires Alexa Media Player installed and logged in**; without it, Room Sync stays dark and
-the rest of Alexa Curator works normally.
+the rest of Alexa Organizer works normally.
 
 **Know what you're opting into:**
 - It's a **reverse-engineered, undocumented** API. Amazon can (and does) change it without

@@ -1,4 +1,4 @@
-"""Alexa Curator sidebar panel: serves the frontend and a websocket API.
+"""Alexa Organizer sidebar panel: serves the frontend and a websocket API.
 
 The panel is a custom element (`alexa-panel`) served as a static module. It reads
 the live inventory (what's exposed, what the policy wants, and why) over websocket
@@ -21,8 +21,8 @@ from .exposure import ExposureUnavailable
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_URL_PATH = "alexa-curator"
-STATIC_URL = "/alexa_curator_static"
+PANEL_URL_PATH = "alexa-organizer"
+STATIC_URL = "/alexa_organizer_static"
 PANEL_ELEMENT = "alexa-panel"
 _FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 _UI = f"{DOMAIN}_ui"  # scratch namespace kept OUT of hass.data[DOMAIN]
@@ -63,7 +63,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
     frontend.async_register_built_in_panel(
         hass,
         component_name="custom",
-        sidebar_title="Alexa Curator",
+        sidebar_title="Alexa Organizer",
         sidebar_icon="mdi:microphone-message",
         frontend_url_path=PANEL_URL_PATH,
         require_admin=True,
@@ -98,7 +98,7 @@ def _safe_inventory(hass: HomeAssistant) -> dict:
                 "unavailable": str(err)}
 
 
-@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/inventory"})
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/inventory"})
 @websocket_api.async_response
 async def ws_inventory(hass: HomeAssistant, connection, msg) -> None:
     """Return the current exposure inventory (rows + preview summary)."""
@@ -108,7 +108,7 @@ async def ws_inventory(hass: HomeAssistant, connection, msg) -> None:
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "alexa_curator/set",
+        vol.Required("type"): "alexa_organizer/set",
         vol.Required("entity_id"): str,
         vol.Required("expose"): bool,
     }
@@ -122,7 +122,7 @@ async def ws_set(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
-    {vol.Required("type"): "alexa_curator/apply", vol.Optional("force", default=False): bool}
+    {vol.Required("type"): "alexa_organizer/apply", vol.Optional("force", default=False): bool}
 )
 @websocket_api.async_response
 async def ws_apply(hass: HomeAssistant, connection, msg) -> None:
@@ -146,11 +146,11 @@ async def ws_apply(hass: HomeAssistant, connection, msg) -> None:
 
 
 # ── Experimental: Alexa-side device cleanup preview (piggybacks alexa_media_player) ──
-# READ-ONLY. The panel's Apply button calls the alexa_curator.alexa_devices SERVICE
+# READ-ONLY. The panel's Apply button calls the alexa_organizer.alexa_devices SERVICE
 # (apply: true) instead, so all the write logic stays in one place.
 
 
-@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/alexa_devices"})
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/alexa_devices"})
 @websocket_api.async_response
 async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
     """Read-only: the full annotated device list (id, name, protected, suggested_remove)."""
@@ -165,7 +165,7 @@ async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], {"available": True, "devices": devices})
 
 
-@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/room_plan"})
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/room_plan"})
 @websocket_api.async_response
 async def ws_room_plan(hass: HomeAssistant, connection, msg) -> None:
     """Read-only: the HA-areas → Alexa-rooms delta (create / rename / delete ops)."""
@@ -180,7 +180,7 @@ async def ws_room_plan(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], {"available": True, "ops": ops})
 
 
-@websocket_api.websocket_command({vol.Required("type"): "alexa_curator/device_rooms"})
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/device_rooms"})
 @websocket_api.async_response
 async def ws_device_rooms(hass: HomeAssistant, connection, msg) -> None:
     """Read-only: rooms + real devices with each device's current room (for the move UI)."""

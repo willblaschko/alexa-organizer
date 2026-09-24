@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
 
 _LOGGER = logging.getLogger(__name__)
 
-HOLD_NOTIFICATION_ID = "alexa_curator_hold"
+HOLD_NOTIFICATION_ID = "alexa_organizer_hold"
 
 
 @dataclass(frozen=True)
@@ -128,11 +128,11 @@ async def async_reconcile(hass, *, dry_run: bool = False, max_removals: int = MA
     live_rm = live_removals(diff, live)
 
     if dry_run:
-        _LOGGER.info("Alexa Curator preview: %s", describe(diff, live))
+        _LOGGER.info("Alexa Organizer preview: %s", describe(diff, live))
         return diff
 
     if diff.is_noop:
-        _LOGGER.debug("Alexa Curator: exposure already matches policy; nothing to do.")
+        _LOGGER.debug("Alexa Organizer: exposure already matches policy; nothing to do.")
         return diff
 
     # Ghost removals (entities that no longer exist) never count against the guard —
@@ -155,15 +155,15 @@ async def async_reconcile(hass, *, dry_run: bool = False, max_removals: int = MA
         raise
 
     if safe:
-        _LOGGER.info("Alexa Curator reconciled: %s", describe(diff, live))
+        _LOGGER.info("Alexa Organizer reconciled: %s", describe(diff, live))
     else:
         _hold(
             hass,
-            f"Alexa Curator held a large unexposure: the policy would remove "
+            f"Alexa Organizer held a large unexposure: the policy would remove "
             f"{len(live_rm)} LIVE entities (> {max_removals}). Exposed "
             f"{len(diff.to_add)} additions and cleaned {len(ghosts)} stale records; "
             f"live removals NOT applied. Review the policy (or run "
-            f"alexa_curator.reconcile with a higher max_removals once), then re-run. "
+            f"alexa_organizer.reconcile with a higher max_removals once), then re-run. "
             f"Would remove (live): " + ", ".join(sorted(live_rm)),
         )
 
@@ -177,7 +177,7 @@ def _hold(hass, message: str) -> None:
         from homeassistant.components import persistent_notification
 
         persistent_notification.async_create(
-            hass, message, title="Alexa Curator", notification_id=HOLD_NOTIFICATION_ID
+            hass, message, title="Alexa Organizer", notification_id=HOLD_NOTIFICATION_ID
         )
     except Exception:  # noqa: BLE001 - notification is best-effort; never mask the real error
         pass
