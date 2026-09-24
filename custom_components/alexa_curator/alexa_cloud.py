@@ -110,17 +110,19 @@ _ENDPOINTS_QUERY = (
     "displayCategories{primary{value}} legacyIdentifiers{dmsIdentifier{deviceType{value{text}}}}}}}"
 )
 
-# Categorization of Amazon DEVICE registrations (endpoints that carry a deviceType).
-# There is no reliable "dead/offline" flag from the API, so this is a heuristic SUGGESTION
-# the user reviews — never an autonomous delete.
-#   PROTECTED — must never be removed (kills our session, or the web login).
-#   junk      — suggested removal (phantom app/device re-registrations, dupes).
-#   keep      — everything else (real Echos).
+# Annotation of Amazon DEVICE registrations (endpoints that carry a deviceType).
+# There is no reliable "dead/offline" flag from the API, so every disposition here is a
+# generic, account-agnostic SUGGESTION the user reviews and toggles per-device — never an
+# autonomous delete, and never keyed to any one person's specific gadgets.
+#   protected        — must never be removed (kills our session, or the web login).
+#   suggested_remove — likely-stale: a companion-app/phone/simulator entry, or a DUPLICATE
+#                      name (the 2nd+ device sharing a friendly name). Default only.
 _PROTECT_NAME = ("alexa media player", "alexa web")
 _PROTECT_CATEGORY = ("APPLICATION",)
-_JUNK_KEYWORDS = (
-    "android device", "audible", "amazon alexa on", "echo buds", "eero",
-    "pixel", " shield", "luna controller", "simulator", "for iphone", "for android",
+# Generic companion-app / non-speaker registration markers (product-name-agnostic).
+_APP_CRUFT = (
+    "android device", "audible", "amazon alexa on", "alexa app", "for iphone",
+    "for android", "simulator", "this device",
 )
 
 
@@ -144,19 +146,40 @@ async def async_list_endpoints(hass, email: str | None = None) -> list[dict]:
     return out
 
 
+def annotate_devices(endpoints: list[dict]) -> list[dict]:
+    """Annotate each device: {id, name, protected, suggested_remove}. Suggestions only."""
+    seen: dict[str, int] = {}
+    out: list[dict] = []
+    for e in endpoints:
+        lname = e["name"].lower()
+        protected = e["category"] in _PROTECT_CATEGORY or any(p in lname for p in _PROTECT_NAME)
+        count = seen.get(lname, 0)
+        seen[lname] = count + 1
+        is_duplicate = count > 0  # a later device sharing an earlier one's name
+        app_cruft = any(k in lname for k in _APP_CRUFT)
+        out.append(
+            {
+                "id": e["id"],
+                "name": e["name"],
+                "protected": protected,
+                "suggested_remove": (not protected) and (app_cruft or is_duplicate),
+            }
+        )
+    return out
+
+
 def categorize_devices(endpoints: list[dict]) -> dict[str, list[dict]]:
-    """Split device endpoints into keep / junk / protected (a reviewable suggestion)."""
+    """Back-compat split into keep / junk / protected, derived from the annotations."""
     keep: list[dict] = []
     junk: list[dict] = []
     protected: list[dict] = []
-    for e in endpoints:
-        lname = e["name"].lower()
-        if e["category"] in _PROTECT_CATEGORY or any(p in lname for p in _PROTECT_NAME):
-            protected.append(e)
-        elif any(k in lname for k in _JUNK_KEYWORDS):
-            junk.append(e)
+    for d in annotate_devices(endpoints):
+        if d["protected"]:
+            protected.append(d)
+        elif d["suggested_remove"]:
+            junk.append(d)
         else:
-            keep.append(e)
+            keep.append(d)
     return {"keep": keep, "junk": junk, "protected": protected}
 
 

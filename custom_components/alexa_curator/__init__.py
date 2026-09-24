@@ -191,9 +191,15 @@ def _register_services(hass: HomeAssistant) -> None:
             )
             return
 
-        limit = call.data.get("limit", DEVICE_CLEANUP_DEFAULT_LIMIT)
-        targets = junk[:limit] if limit else junk
         protected_ids = {d["id"] for d in protected}  # belt-and-suspenders guard
+        requested = call.data.get("endpoint_ids")
+        if requested:
+            # Panel flow: remove exactly the user-selected devices (protected never).
+            by_id = {d["id"]: d for d in alexa_cloud.annotate_devices(endpoints)}
+            targets = [by_id[i] for i in requested if i in by_id and not by_id[i]["protected"]]
+        else:
+            limit = call.data.get("limit", DEVICE_CLEANUP_DEFAULT_LIMIT)
+            targets = junk[:limit] if limit else junk
         done: list[str] = []
         failed: list[str] = []
         for d in targets:
@@ -206,7 +212,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 failed.append(f"{d['name']}: {err}")
             await asyncio.sleep(0.4)  # be gentle on Amazon's rate limits
 
-        remaining = len(junk) - len(targets)
+        remaining = 0 if requested else (len(junk) - len(targets))
         msg = f"Device cleanup — deregistered {len(done)} device(s)."
         if remaining > 0:
             msg += f" {remaining} still suggested (raise limit or run again)."
@@ -230,6 +236,7 @@ def _register_services(hass: HomeAssistant) -> None:
             {
                 vol.Optional("apply", default=False): bool,
                 vol.Optional("limit"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+                vol.Optional("endpoint_ids"): [str],
             }
         ),
     )

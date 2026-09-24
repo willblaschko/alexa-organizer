@@ -9,12 +9,17 @@ interface HomeAssistant {
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
 }
 
+interface AlexaDevice {
+  id: string;
+  name: string;
+  protected: boolean;
+  suggested_remove: boolean;
+}
+
 interface AlexaDevices {
   available: boolean;
   reason?: string;
-  junk: string[];
-  protected: string[];
-  keep: string[];
+  devices?: AlexaDevice[];
 }
 
 interface Row {
@@ -86,6 +91,7 @@ export class AlexaPanel extends LitElement {
   @state() private _unavailable: string | null = null;
   @state() private _alexa: AlexaDevices | null = null;
   @state() private _alexaBusy = false;
+  @state() private _alexaRemove = new Set<string>(); // endpoint ids toggled for removal
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -144,23 +150,41 @@ export class AlexaPanel extends LitElement {
     if (this._alexaBusy) return;
     this._alexaBusy = true;
     try {
-      this._alexa = await this.hass.connection.sendMessagePromise<AlexaDevices>({
+      const res = await this.hass.connection.sendMessagePromise<AlexaDevices>({
         type: "alexa_curator/alexa_devices",
       });
+      this._alexa = res;
+      // Seed the removal set from the generic suggestions (never protected).
+      this._alexaRemove = new Set(
+        (res.devices ?? []).filter((d) => d.suggested_remove && !d.protected).map((d) => d.id)
+      );
     } finally {
       this._alexaBusy = false;
     }
   }
 
-  private async _applyAlexa(limit: number): Promise<void> {
-    if (this._alexaBusy) return;
+  private _toggleDevice(d: AlexaDevice): void {
+    if (d.protected) return;
+    const next = new Set(this._alexaRemove);
+    if (next.has(d.id)) next.delete(d.id);
+    else next.add(d.id);
+    this._alexaRemove = next;
+  }
+
+  private async _applyAlexaSelected(): Promise<void> {
+    if (this._alexaBusy || this._alexaRemove.size === 0) return;
     this._alexaBusy = true;
     try {
-      // The write lives in the alexa_devices service (one code path); re-preview after.
-      await this.hass.callService("alexa_curator", "alexa_devices", { apply: true, limit });
-      this._alexa = await this.hass.connection.sendMessagePromise<AlexaDevices>({
+      await this.hass.callService("alexa_curator", "alexa_devices", {
+        apply: true,
+        endpoint_ids: [...this._alexaRemove],
+      });
+      const res = await this.hass.connection.sendMessagePromise<AlexaDevices>({
         type: "alexa_curator/alexa_devices",
       });
+      this._alexa = res;
+      const present = new Set((res.devices ?? []).map((d) => d.id));
+      this._alexaRemove = new Set([...this._alexaRemove].filter((id) => present.has(id)));
     } finally {
       this._alexaBusy = false;
     }
@@ -267,65 +291,101 @@ export class AlexaPanel extends LitElement {
         ${this._ghosts.length ? this._ghostSection() : nothing}
         ${this._alexaSection()}
       </div>
+      ${this._alexaRemove.size > 0 ? this._deviceApplyBar() : nothing}
     `;
   }
 
   private _alexaSection(): TemplateResult {
     const a = this._alexa;
+    if (!a) {
+      return html`
+        <section class="alexa-exp">
+          <h2>Alexa devices <span class="exp">experimental</span></h2>
+          <p class="muted">
+            Review the device registrations on your Amazon account — your real Echos, plus the
+            phantom app installs and duplicates that pile up. Needs Alexa Media Player logged in.
+          </p>
+          <button class="apply" ?disabled=${this._alexaBusy} @click=${this._previewAlexa}>
+            ${this._alexaBusy ? "Loading…" : "Load devices"}
+          </button>
+        </section>
+      `;
+    }
+    if (a.available === false) {
+      return html`
+        <section class="alexa-exp">
+          <h2>Alexa devices <span class="exp">experimental</span></h2>
+          <div class="banner warn">
+            Unavailable: ${a.reason ?? "no session"}. Install and log into Alexa Media Player.
+          </div>
+        </section>
+      `;
+    }
+    const devices = a.devices ?? [];
+    const remove = devices.filter((d) => this._alexaRemove.has(d.id));
+    const keep = devices.filter((d) => !d.protected && !this._alexaRemove.has(d.id));
+    const prot = devices.filter((d) => d.protected);
     return html`
       <section class="alexa-exp">
         <h2>Alexa devices <span class="exp">experimental</span></h2>
         <p class="muted">
-          Preview the stale device registrations on your Amazon account — old phones, duplicate
-          Echo Buds, dead app installs. Needs the Alexa Media Player integration logged in.
+          Toggle each device <b>Keep</b> or <b>Remove</b>. The removal suggestions are generic
+          (companion-app entries and duplicate names) — you decide. Protected devices, and your
+          Alexa Media Player session, can't be removed.
         </p>
-        ${!a
-          ? html`<button class="apply" ?disabled=${this._alexaBusy} @click=${this._previewAlexa}>
-              ${this._alexaBusy ? "Loading…" : "Preview"}
-            </button>`
-          : a.available === false
-            ? html`<div class="banner warn">
-                Unavailable: ${a.reason ?? "no session"}. Install and log into Alexa Media Player.
-              </div>`
-            : html`
-                <div class="applybar">
-                  <div class="chips">
-                    <span class="chip live" ?hidden=${!a.junk.length}>−${a.junk.length} remove</span>
-                    <span class="chip ghost">${a.protected.length} protected</span>
-                    <span class="chip ok">${a.keep.length} keep</span>
-                  </div>
-                  <div class="applybtns">
-                    <button class="apply ghostbtn" ?disabled=${this._alexaBusy || !a.junk.length}
-                      @click=${() => this._applyAlexa(5)}>Remove 5</button>
-                    <button class="apply" ?disabled=${this._alexaBusy || !a.junk.length}
-                      @click=${() => this._applyAlexa(0)}>
-                      ${this._alexaBusy ? "Working…" : `Remove all ${a.junk.length}`}
-                    </button>
-                  </div>
-                </div>
-                ${a.junk.length
-                  ? this._junkGroups(a.junk).map(
-                      (g) => html`
-                        <div class="kindgroup">
-                          <h3>${g.label} <span class="count">${g.names.length}</span></h3>
-                          <div class="rows">
-                            ${g.names.map(
-                              (n) => html`<div class="row">
-                                <span class="minus">−</span>
-                                <div class="info"><div class="name">${n}</div></div>
-                                <span class="tag remove">remove</span>
-                              </div>`
-                            )}
-                          </div>
-                        </div>
-                      `
-                    )
-                  : html`<p class="muted">Nothing flagged — your device list is clean.</p>`}
-                <p class="muted">
-                  Protected, never touched: ${a.protected.join(", ") || "none"}.
-                </p>
-              `}
+        ${remove.length ? this._deviceGroup("Removing", remove, "remove") : nothing}
+        ${keep.length ? this._deviceGroup("Keeping", keep, "keep") : nothing}
+        ${prot.length ? this._deviceGroup("Protected", prot, "protected") : nothing}
       </section>
+    `;
+  }
+
+  private _deviceGroup(
+    label: string,
+    devices: AlexaDevice[],
+    mode: "remove" | "keep" | "protected"
+  ): TemplateResult {
+    return html`
+      <div class="kindgroup">
+        <h3>${label} <span class="count">${devices.length}</span></h3>
+        <div class="rows">
+          ${devices.map(
+            (d) => html`
+              <div class="row ${mode === "remove" ? "removing" : ""}">
+                ${mode === "remove" ? html`<span class="minus">−</span>` : nothing}
+                <div class="info"><div class="name">${d.name}</div></div>
+                ${mode === "protected"
+                  ? html`<span class="tag">protected</span>`
+                  : html`<button
+                      class="toggle ${mode === "remove" ? "rem" : "keepbtn"}"
+                      ?disabled=${this._alexaBusy}
+                      @click=${() => this._toggleDevice(d)}
+                      title=${mode === "remove" ? "Set to remove — click to keep" : "Keeping — click to remove"}
+                    >
+                      ${mode === "remove" ? "Remove" : "Keep"}
+                    </button>`}
+              </div>
+            `
+          )}
+        </div>
+      </div>
+    `;
+  }
+
+  private _deviceApplyBar(): TemplateResult {
+    const n = this._alexaRemove.size;
+    return html`
+      <div class="deltabar ${this._alexaBusy ? "busy" : ""}">
+        <div class="flare"></div>
+        <div class="deltabar-inner">
+          <span class="delta-count">
+            ${this._alexaBusy ? "Removing…" : `${n} Alexa device${n === 1 ? "" : "s"} to remove`}
+          </span>
+          <button class="apply" ?disabled=${this._alexaBusy} @click=${this._applyAlexaSelected}>
+            ${this._alexaBusy ? "Working…" : `Remove ${n}`}
+          </button>
+        </div>
+      </div>
     `;
   }
 
@@ -378,33 +438,6 @@ export class AlexaPanel extends LitElement {
     `;
   }
 
-  private _junkGroups(names: string[]): Array<{ label: string; names: string[] }> {
-    const KINDS: Array<[string, string]> = [
-      ["echo buds", "Echo Buds"],
-      ["audible", "Audible app"],
-      ["amazon alexa on", "Alexa app"],
-      ["android device", "Android device"],
-      ["eero", "eero"],
-      ["simulator", "Simulators"],
-      ["shield", "Shield TV"],
-      ["luna", "Luna"],
-      ["pixel", "Phones"],
-    ];
-    const order = KINDS.map(([, l]) => l).concat("Other");
-    const groups = new Map<string, string[]>();
-    for (const n of names) {
-      const ln = n.toLowerCase();
-      const hit = KINDS.find(([kw]) => ln.includes(kw));
-      const label = hit ? hit[1] : "Other";
-      const arr = groups.get(label);
-      if (arr) arr.push(n);
-      else groups.set(label, [n]);
-    }
-    return [...groups.entries()]
-      .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
-      .map(([label, ns]) => ({ label, names: ns.slice().sort() }));
-  }
-
   static override styles = css`
     :host {
       display: block;
@@ -415,7 +448,7 @@ export class AlexaPanel extends LitElement {
     .wrap {
       max-width: 900px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 16px 16px 88px;
       box-sizing: border-box;
     }
     header {
@@ -686,6 +719,75 @@ export class AlexaPanel extends LitElement {
     .tag.remove {
       background: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
       color: var(--error-color, #c62828);
+    }
+    button.toggle.rem {
+      width: auto;
+      padding: 5px 12px;
+      background: var(--error-color, #c62828);
+      color: #fff;
+      border-color: var(--error-color, #c62828);
+    }
+    button.toggle.keepbtn {
+      width: auto;
+      padding: 5px 12px;
+    }
+    .row.removing .name {
+      color: var(--error-color, #c62828);
+    }
+    .deltabar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      overflow: hidden;
+      background: var(--card-background-color, #fff);
+      border-top: 1px solid var(--divider-color, #ddd);
+      box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.14);
+    }
+    .deltabar .flare {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(
+        100deg,
+        transparent 35%,
+        color-mix(in srgb, var(--primary-color, #03a9f4) 22%, transparent) 50%,
+        color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent) 60%,
+        transparent 72%
+      );
+      background-size: 220% 100%;
+      animation: flare-sweep 3s linear infinite;
+    }
+    .deltabar.busy .flare {
+      animation-duration: 1.1s;
+    }
+    @keyframes flare-sweep {
+      from {
+        background-position: 220% 0;
+      }
+      to {
+        background-position: -120% 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .deltabar .flare {
+        animation: none;
+      }
+    }
+    .deltabar-inner {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px 16px;
+    }
+    .delta-count {
+      font-weight: 600;
+      font-size: 0.95rem;
     }
     .rows.scroll {
       max-height: 240px;

@@ -151,7 +151,7 @@ async def ws_apply(hass: HomeAssistant, connection, msg) -> None:
 @websocket_api.websocket_command({vol.Required("type"): "alexa_curator/alexa_devices"})
 @websocket_api.async_response
 async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only preview of the Amazon device registrations, categorized keep/junk/protected."""
+    """Read-only: the full annotated device list (id, name, protected, suggested_remove)."""
     from . import alexa_cloud
 
     try:
@@ -159,17 +159,5 @@ async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
     except alexa_cloud.AlexaCloudUnavailable as err:
         connection.send_result(msg["id"], {"available": False, "reason": str(err)})
         return
-    cats = alexa_cloud.categorize_devices(endpoints)
-
-    def _key(d: dict) -> str:
-        return d["name"].lower()
-
-    connection.send_result(
-        msg["id"],
-        {
-            "available": True,
-            "junk": [d["name"] for d in sorted(cats["junk"], key=_key)],
-            "protected": [d["name"] for d in sorted(cats["protected"], key=_key)],
-            "keep": [d["name"] for d in sorted(cats["keep"], key=_key)],
-        },
-    )
+    devices = sorted(alexa_cloud.annotate_devices(endpoints), key=lambda d: d["name"].lower())
+    connection.send_result(msg["id"], {"available": True, "devices": devices})
