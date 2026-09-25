@@ -355,17 +355,31 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
     except AlexaCloudUnavailable:
         pass
 
+    # Live HA entity_ids, to tell an orphaned HA exposure from an other-source device.
+    live_ids = policy.live_entity_ids(hass) if hasattr(policy, "live_entity_ids") else set()
+
     assigns: list[dict] = []
-    unmatched_names: list[str] = []
+    unmatched: list[dict] = []
     no_room: list[str] = []
     for e in eps:
         dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
         if dms and (((dms.get("deviceType") or {}).get("value") or {}).get("text")):
             continue  # an Amazon device (Echo/app) — handled by the device-move UI
         name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or ""
+        chrs = (((e.get("legacyIdentifiers") or {}).get("chrsIdentifier") or {}).get("entityId")) or ""
         area = ha_area.get(name.strip().lower())
         if not area:
-            unmatched_names.append(name)
+            # Not matched by name. Is chrsIdentifier an HA entity_id? If so, is it still live?
+            looks_ha = "." in chrs and chrs.split(".")[0].islower()
+            unmatched.append(
+                {
+                    "id": e["id"],
+                    "name": name,
+                    "chrs": chrs,
+                    "ha_shaped": looks_ha,
+                    "ha_orphan": looks_ha and chrs not in live_ids,
+                }
+            )
             continue
         desired = rooms_by_norm.get(area.strip().lower())
         if not desired:
@@ -379,7 +393,7 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
     return {
         "assigns": assigns,
         "exposed_with_area": len(ha_area),
-        "unmatched": unmatched_names,
+        "unmatched": unmatched,
         "area_has_no_room": no_room,
     }
 
@@ -388,7 +402,8 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
 
 _ENDPOINTS_QUERY = (
     "query{listEndpoints(listEndpointsInput:{}){endpoints{id friendlyNameObject{value{text}} "
-    "displayCategories{primary{value}} legacyIdentifiers{dmsIdentifier{deviceType{value{text}}}}}}}"
+    "displayCategories{primary{value}} legacyIdentifiers{chrsIdentifier{entityId} "
+    "dmsIdentifier{deviceType{value{text}}}}}}}"
 )
 
 # Annotation of Amazon DEVICE registrations (endpoints that carry a deviceType).

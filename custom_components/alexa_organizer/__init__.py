@@ -317,15 +317,21 @@ def _register_services(hass: HomeAssistant) -> None:
         assigns = plan["assigns"]
         sample = "\n".join(
             f"• {a['name']}: {(a['from'] or {}).get('name', '(unassigned)')} → {a['to']['name']}"
-            for a in assigns[:25]
+            for a in assigns[:20]
         )
         no_room = plan["area_has_no_room"]
+        unmatched = plan["unmatched"]
+        orphans = [u for u in unmatched if u["ha_orphan"]]
+        other = [u for u in unmatched if not u["ha_orphan"]]
+        orphan_s = "\n".join(f"   - {o['name']}  [{o['chrs']}]" for o in orphans[:15]) or "   (none)"
+        other_s = "\n".join(f"   - {o['name']}  [{o['chrs'] or 'no chrs id'}]" for o in other[:15])
         msg = (
-            f"Exposed HA devices matched to an area: {plan['exposed_with_area']}.\n"
-            f"Would assign {len(assigns)} to their area's Alexa room:\n{sample}\n\n"
-            f"{len(plan['unmatched'])} Alexa smart-home endpoints didn't name-match an HA entity.\n"
-            f"{len(no_room)} matched an area that has NO Alexa room yet (run room sync first)"
-            + (":\n" + "\n".join(f"• {x}" for x in no_room[:15]) if no_room else ".")
+            f"ASSIGN — {len(assigns)} exposed devices to their area's room "
+            f"(of {plan['exposed_with_area']} matched to an area):\n{sample}\n\n"
+            f"NO ROOM YET — {len(no_room)} matched an area with no Alexa room (room sync creates it first).\n\n"
+            f"UNMATCHED — {len(unmatched)} smart-home endpoints didn't name-match a live HA entity:\n"
+            f"  DELETABLE orphans ({len(orphans)}) — chrsId is an HA entity_id that's GONE from HA:\n{orphan_s}\n"
+            f"  KEEP ({len(other)}) — other-source or name-drift:\n{other_s}"
         )
         persistent_notification.async_create(
             hass, msg, title="Alexa Organizer — assign preview", notification_id="alexa_organizer_assign"
