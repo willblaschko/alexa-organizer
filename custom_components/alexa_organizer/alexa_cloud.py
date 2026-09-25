@@ -331,7 +331,7 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
     stages an assign where the endpoint isn't already there. Returns the plan + match stats so
     we can confirm the name-mapping before wiring any writes.
     """
-    from . import inventory
+    from . import inventory, policy
 
     groups = await async_list_groups(hass, email)
     node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
@@ -356,7 +356,7 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
         pass
 
     # Live HA entity_ids, to tell an orphaned HA exposure from an other-source device.
-    live_ids = policy.live_entity_ids(hass) if hasattr(policy, "live_entity_ids") else set()
+    live_ids = policy.live_entity_ids(hass)
 
     assigns: list[dict] = []
     unmatched: list[dict] = []
