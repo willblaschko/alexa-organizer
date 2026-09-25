@@ -53,6 +53,23 @@ interface DeviceRoomsData {
   devices?: DeviceRoom[];
 }
 
+interface AssignOp {
+  id: string;
+  name: string;
+  from_id?: string | null;
+  from_name?: string | null;
+  to_id: string;
+  to_name: string;
+}
+
+interface AssignPlan {
+  available: boolean;
+  reason?: string;
+  assigns?: AssignOp[];
+  no_room?: number;
+  unmatched?: number;
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -132,6 +149,10 @@ export class AlexaPanel extends LitElement {
   @state() private _deviceRoomsBusy = false;
   @state() private _moves: Record<string, string> = {}; // endpoint id -> target room id ("" = unassigned)
   @state() private _moveStatus: Record<string, string> = {};
+  @state() private _assignPlan: AssignPlan | null = null;
+  @state() private _assignBusy = false;
+  @state() private _assignInclude = new Set<string>(); // endpoint ids to assign
+  @state() private _assignStatus: Record<string, string> = {};
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -343,6 +364,7 @@ export class AlexaPanel extends LitElement {
         )}
         ${this._ghosts.length ? this._ghostSection() : nothing}
         ${this._roomSection()}
+        ${this._assignSection()}
         ${this._deviceRoomsSection()}
         ${this._alexaSection()}
       </div>
@@ -359,15 +381,18 @@ export class AlexaPanel extends LitElement {
       this._hasExposure ||
       this._alexaRemove.size > 0 ||
       this._roomInclude.size > 0 ||
-      this._moveCount > 0
+      this._moveCount > 0 ||
+      this._assignInclude.size > 0
     );
   }
 
   private async _applyAll(): Promise<void> {
-    if (this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy) return;
+    if (this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy || this._assignBusy)
+      return;
     if (this._hasExposure) await this._apply(false);
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._roomInclude.size > 0) await this._applyRoomOps();
+    if (this._assignInclude.size > 0) await this._applyAssigns();
     if (this._moveCount > 0) await this._applyMoves();
   }
 
@@ -492,6 +517,99 @@ export class AlexaPanel extends LitElement {
           ${included ? "On" : "Off"}
         </button>
       </div>
+    `;
+  }
+
+  private async _loadAssignPlan(): Promise<void> {
+    if (this._assignBusy) return;
+    this._assignBusy = true;
+    try {
+      const plan = await this.hass.connection.sendMessagePromise<AssignPlan>({
+        type: "alexa_organizer/assign_plan",
+      });
+      this._assignPlan = plan;
+      this._assignInclude = new Set((plan.assigns ?? []).map((a) => a.id)); // all on by default
+      this._assignStatus = {};
+    } finally {
+      this._assignBusy = false;
+    }
+  }
+
+  private _toggleAssign(id: string): void {
+    const next = new Set(this._assignInclude);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this._assignInclude = next;
+  }
+
+  private async _applyAssigns(): Promise<void> {
+    const ops = (this._assignPlan?.assigns ?? []).filter((a) => this._assignInclude.has(a.id));
+    for (const a of ops) {
+      this._assignStatus = { ...this._assignStatus, [a.id]: "running" };
+      const data: Record<string, unknown> = { endpoint_id: a.id, to: a.to_id };
+      if (a.from_id) data.from = a.from_id;
+      try {
+        await this.hass.callService("alexa_organizer", "move_device", data);
+        this._assignStatus = { ...this._assignStatus, [a.id]: "done" };
+      } catch {
+        this._assignStatus = { ...this._assignStatus, [a.id]: "error" };
+      }
+    }
+    await this._loadAssignPlan();
+  }
+
+  private _assignSection(): TemplateResult {
+    const p = this._assignPlan;
+    return html`
+      <section class="alexa-exp">
+        <h2>Snap exposed devices to rooms <span class="exp">experimental</span></h2>
+        <p class="muted">
+          Put each exposed HA device into its area's Alexa room (HA area is the truth, matched by
+          name). Suggestions are pre-checked — toggle any off; applies from the bar below.
+        </p>
+        ${!p
+          ? html`<button class="apply" ?disabled=${this._assignBusy} @click=${this._loadAssignPlan}>
+              ${this._assignBusy ? "Loading…" : "Preview assignments"}
+            </button>`
+          : p.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${p.reason ?? "no session"}. Needs Alexa Media Player or Alexa Devices.
+              </div>`
+            : this._assignBody(p)}
+      </section>
+    `;
+  }
+
+  private _assignBody(p: AssignPlan): TemplateResult {
+    const assigns = p.assigns ?? [];
+    if (!assigns.length) {
+      return html`<p class="muted">
+        Nothing to assign${p.no_room ? ` (${p.no_room} need a room created first — run room sync)` : ""}.
+      </p>`;
+    }
+    return html`
+      <div class="kindgroup">
+        <h3>Assign to room <span class="count">${assigns.length}</span></h3>
+        <div class="rows">
+          ${assigns.map((a) => {
+            const on = this._assignInclude.has(a.id);
+            const busy = this._busy || this._alexaBusy || this._roomBusy || this._assignBusy;
+            return html`<div class="row ${on ? "moving" : ""}">
+              ${this._statusDisc(this._assignStatus[a.id])}
+              <div class="info">
+                <div class="name">${a.name}</div>
+                <div class="meta">→ ${a.to_name}</div>
+              </div>
+              <button class="toggle ${on ? "on" : "off"}" ?disabled=${busy}
+                @click=${() => this._toggleAssign(a.id)}>${on ? "On" : "Off"}</button>
+            </div>`;
+          })}
+        </div>
+      </div>
+      <p class="muted">
+        ${p.no_room ? `${p.no_room} more need their room created first (room sync). ` : ""}
+        ${p.unmatched ? `${p.unmatched} endpoints didn't match a live HA entity (left alone).` : ""}
+      </p>
     `;
   }
 
@@ -698,8 +816,9 @@ export class AlexaPanel extends LitElement {
     const s = this._summary;
     const dev = this._alexaRemove.size;
     const rooms = this._roomInclude.size;
-    const moves = this._moveCount;
-    const busy = this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy;
+    const moves = this._moveCount + this._assignInclude.size;
+    const busy =
+      this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy || this._assignBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -733,13 +852,19 @@ export class AlexaPanel extends LitElement {
       .map((d) => d.name)
       .sort();
     const roomOps = (this._roomPlan?.ops ?? []).filter((o) => this._roomInclude.has(this._opKey(o)));
+    const assigns = (this._assignPlan?.assigns ?? []).filter((a) => this._assignInclude.has(a.id));
     const moves = Object.entries(this._moves);
     const roomName = (id: string): string =>
       (this._deviceRooms?.rooms ?? []).find((r) => r.id === id)?.name ?? "(unassigned)";
     const devName = (id: string): string =>
       (this._deviceRooms?.devices ?? []).find((d) => d.id === id)?.name ?? id;
     const empty =
-      !changed.length && !this._ghosts.length && !devNames.length && !roomOps.length && !moves.length;
+      !changed.length &&
+      !this._ghosts.length &&
+      !devNames.length &&
+      !roomOps.length &&
+      !assigns.length &&
+      !moves.length;
     return html`
       <div class="deltadetails">
         ${changed.map(
@@ -760,6 +885,11 @@ export class AlexaPanel extends LitElement {
               ${o.op === "create" ? "+" : o.op === "delete" ? "−" : "~"}
             </span>
             ${o.op} room · ${o.op === "rename" ? html`${o.from} → ${o.to}` : o.name}
+          </div>`
+        )}
+        ${assigns.map(
+          (a) => html`<div class="dline">
+            <span class="plus">~</span> assign · ${a.name} → ${a.to_name}
           </div>`
         )}
         ${moves.map(

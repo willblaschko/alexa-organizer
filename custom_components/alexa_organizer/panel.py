@@ -58,6 +58,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_alexa_devices)
         websocket_api.async_register_command(hass, ws_room_plan)
         websocket_api.async_register_command(hass, ws_device_rooms)
+        websocket_api.async_register_command(hass, ws_assign_plan)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -192,3 +193,36 @@ async def ws_device_rooms(hass: HomeAssistant, connection, msg) -> None:
         connection.send_result(msg["id"], {"available": False, "reason": str(err)})
         return
     connection.send_result(msg["id"], {"available": True, **data})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/assign_plan"})
+@websocket_api.async_response
+async def ws_assign_plan(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: exposed HA devices → their HA-area's Alexa room (the assign suggestions)."""
+    from . import alexa_cloud
+
+    try:
+        plan = await alexa_cloud.async_assign_plan(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    assigns = [
+        {
+            "id": a["id"],
+            "name": a["name"],
+            "from_id": (a["from"] or {}).get("id"),
+            "from_name": (a["from"] or {}).get("name"),
+            "to_id": a["to"]["id"],
+            "to_name": a["to"]["name"],
+        }
+        for a in plan["assigns"]
+    ]
+    connection.send_result(
+        msg["id"],
+        {
+            "available": True,
+            "assigns": assigns,
+            "no_room": len(plan["area_has_no_room"]),
+            "unmatched": len(plan["unmatched"]),
+        },
+    )
