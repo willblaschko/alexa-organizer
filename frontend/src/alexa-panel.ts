@@ -43,6 +43,7 @@ interface DeviceRoom {
   name: string;
   room_id: string | null;
   room_name: string | null;
+  suggested_room_id?: string | null;
 }
 
 interface DeviceRoomsData {
@@ -501,7 +502,12 @@ export class AlexaPanel extends LitElement {
       this._deviceRooms = await this.hass.connection.sendMessagePromise<DeviceRoomsData>({
         type: "alexa_organizer/device_rooms",
       });
-      this._moves = {};
+      // Snap: pre-stage the name-matched room suggestions (each still overridable via the dropdown).
+      const moves: Record<string, string> = {};
+      for (const d of this._deviceRooms.devices ?? []) {
+        if (d.suggested_room_id) moves[d.id] = d.suggested_room_id;
+      }
+      this._moves = moves;
       this._moveStatus = {};
     } finally {
       this._deviceRoomsBusy = false;
@@ -548,8 +554,9 @@ export class AlexaPanel extends LitElement {
       <section class="alexa-exp">
         <h2>Devices in rooms <span class="exp">experimental</span></h2>
         <p class="muted">
-          Which Alexa room each device sits in. Change a device's room with the dropdown —
-          moves apply from the bar below.
+          Which Alexa room each device sits in. Devices whose name matches a room are
+          pre-snapped to it (highlighted) — override any with the dropdown; moves apply from
+          the bar below.
         </p>
         ${!dr
           ? html`<button class="apply" ?disabled=${this._deviceRoomsBusy} @click=${this._loadDeviceRooms}>

@@ -295,16 +295,32 @@ async def async_device_rooms(hass, email: str | None = None) -> dict:
         if d["protected"] or d["suggested_remove"]:
             continue
         r = ep_room.get(d["id"])
+        current = r["id"] if r else None
+        suggested = _suggest_room(d["name"], rooms)
         devices.append(
             {
                 "id": d["id"],
                 "name": d["name"],
-                "room_id": r["id"] if r else None,
+                "room_id": current,
                 "room_name": r["name"] if r else None,
+                # A name-matched room to snap to, only when it differs from the current one.
+                "suggested_room_id": suggested if suggested and suggested != current else None,
             }
         )
     devices.sort(key=lambda x: x["name"].lower())
     return {"rooms": rooms, "devices": devices}
+
+
+def _suggest_room(name: str, rooms: list[dict]) -> str | None:
+    """The room whose name the device name starts with (longest wins) — 'Kitchen Echo' → Kitchen."""
+    ln = name.lower()
+    best_id: str | None = None
+    best_len = 0
+    for r in rooms:
+        rn = r["name"].lower()
+        if (ln == rn or ln.startswith(rn + " ")) and len(rn) > best_len:
+            best_id, best_len = r["id"], len(rn)
+    return best_id
 
 
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────
