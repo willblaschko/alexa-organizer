@@ -323,6 +323,67 @@ def _suggest_room(name: str, rooms: list[dict]) -> str | None:
     return best_id
 
 
+async def async_assign_plan(hass, email: str | None = None) -> dict:
+    """Plan assigning EXPOSED HA devices to their HA-area's Alexa room (HA = truth). Read-only.
+
+    Maps each Alexa smart-home endpoint (the exposed HA entities — those WITHOUT an Amazon
+    deviceType) to an HA entity by friendly name → its HA area → that area's Alexa room, and
+    stages an assign where the endpoint isn't already there. Returns the plan + match stats so
+    we can confirm the name-mapping before wiring any writes.
+    """
+    from . import inventory
+
+    groups = await async_list_groups(hass, email)
+    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+
+    ep_room: dict[str, dict] = {}
+    rooms_by_norm: dict[str, dict] = {}
+    for g in groups:
+        info = {"id": g["id"], "name": _group_name(g)}
+        rooms_by_norm[_group_name(g).strip().lower()] = info
+        for m in (g.get("memberDevices") or {}).get("items") or []:
+            if m.get("id"):
+                ep_room[m["id"]] = info
+
+    # HA exposed entity friendly-name → area (the truth we snap Alexa to).
+    ha_area: dict[str, str] = {}
+    try:
+        for r in inventory.build_inventory(hass)["rows"]:
+            if r.get("area") and (r.get("desired") or r.get("exposed")) and not r.get("ghost"):
+                ha_area[str(r["name"]).strip().lower()] = r["area"]
+    except AlexaCloudUnavailable:
+        pass
+
+    assigns: list[dict] = []
+    unmatched_names: list[str] = []
+    no_room: list[str] = []
+    for e in eps:
+        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
+        if dms and (((dms.get("deviceType") or {}).get("value") or {}).get("text")):
+            continue  # an Amazon device (Echo/app) — handled by the device-move UI
+        name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or ""
+        area = ha_area.get(name.strip().lower())
+        if not area:
+            unmatched_names.append(name)
+            continue
+        desired = rooms_by_norm.get(area.strip().lower())
+        if not desired:
+            no_room.append(f"{name} → {area}")  # area has no Alexa room yet (room sync makes it)
+            continue
+        cur = ep_room.get(e["id"])
+        if cur and cur["id"] == desired["id"]:
+            continue  # already in the right room
+        assigns.append({"id": e["id"], "name": name, "from": cur, "to": desired})
+
+    return {
+        "assigns": assigns,
+        "exposed_with_area": len(ha_area),
+        "unmatched": unmatched_names,
+        "area_has_no_room": no_room,
+    }
+
+
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────
 
 _ENDPOINTS_QUERY = (

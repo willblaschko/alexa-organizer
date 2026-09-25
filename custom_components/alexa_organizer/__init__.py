@@ -25,6 +25,7 @@ from .const import (
     MAX_REMOVALS,
     SERVICE_ALEXA_DEVICES,
     SERVICE_ALEXA_ROOMS,
+    SERVICE_ASSIGN_PREVIEW,
     SERVICE_MOVE_DEVICE,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
@@ -41,6 +42,7 @@ _ALL_SERVICES = (
     SERVICE_ALEXA_DEVICES,
     SERVICE_ROOM_OP,
     SERVICE_MOVE_DEVICE,
+    SERVICE_ASSIGN_PREVIEW,
 )
 
 
@@ -297,3 +299,36 @@ def _register_services(hass: HomeAssistant) -> None:
             }
         ),
     )
+
+    async def assign_preview(_call: ServiceCall) -> None:
+        # READ-ONLY diagnostic: does the exposed-HA-device → area's-room mapping land?
+        from . import alexa_cloud
+
+        from homeassistant.components import persistent_notification
+
+        try:
+            plan = await alexa_cloud.async_assign_plan(hass)
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            persistent_notification.async_create(
+                hass, f"Couldn't reach Alexa: {err}.", title="Alexa Organizer — assign preview",
+                notification_id="alexa_organizer_assign",
+            )
+            return
+        assigns = plan["assigns"]
+        sample = "\n".join(
+            f"• {a['name']}: {(a['from'] or {}).get('name', '(unassigned)')} → {a['to']['name']}"
+            for a in assigns[:25]
+        )
+        no_room = plan["area_has_no_room"]
+        msg = (
+            f"Exposed HA devices matched to an area: {plan['exposed_with_area']}.\n"
+            f"Would assign {len(assigns)} to their area's Alexa room:\n{sample}\n\n"
+            f"{len(plan['unmatched'])} Alexa smart-home endpoints didn't name-match an HA entity.\n"
+            f"{len(no_room)} matched an area that has NO Alexa room yet (run room sync first)"
+            + (":\n" + "\n".join(f"• {x}" for x in no_room[:15]) if no_room else ".")
+        )
+        persistent_notification.async_create(
+            hass, msg, title="Alexa Organizer — assign preview", notification_id="alexa_organizer_assign"
+        )
+
+    hass.services.async_register(DOMAIN, SERVICE_ASSIGN_PREVIEW, assign_preview)

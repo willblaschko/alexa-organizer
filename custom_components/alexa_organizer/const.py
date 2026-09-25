@@ -39,6 +39,9 @@ SERVICE_ALEXA_DEVICES = "alexa_devices"
 SERVICE_ROOM_OP = "room_op"
 # Experimental: move ONE device between Alexa rooms (per-move, for panel status).
 SERVICE_MOVE_DEVICE = "move_device"
+# Experimental read-only diagnostic: preview assigning exposed HA devices to their
+# HA-area's Alexa room (verifies the endpoint-to-HA name-mapping before wiring writes).
+SERVICE_ASSIGN_PREVIEW = "assign_preview"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.
