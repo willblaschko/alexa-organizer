@@ -26,63 +26,121 @@ class AlexaCloudUnavailable(RuntimeError):
     """alexa_media_player isn't set up, has no live login, or the call failed."""
 
 
-def _login(hass, email: str | None = None):
-    """Fetch a.m.p.'s AlexaLogin object. Re-fetched per call — a.m.p. can swap it on relogin."""
+DATA_ALEXA_DEVICES = "alexa_devices"  # the core integration's domain
+_NEXUS_PATH = "/nexus/v1/graphql"
+_CALLER_PKG = "AlexaDCWebsiteAssets"
+
+# The GraphQL request rides on the session COOKIES (+ csrf header), never the OAuth bearer
+# token — proven live (cookie-only writes succeed) and matches how aioamazondevices calls
+# /nexus itself. So all we need from any source is a cookie jar for alexa.amazon.com.
+
+
+def _amp_login(hass, email: str | None = None):
+    """a.m.p.'s AlexaLogin object, or None. Re-fetched per call (swapped on relogin)."""
     data = hass.data.get(DATA_ALEXAMEDIA)
-    if not data or not data.get("accounts"):
-        raise AlexaCloudUnavailable("Alexa Media Player is not set up")
-    accounts = data["accounts"]
+    accounts = (data or {}).get("accounts") or {}
     entry = accounts.get(email) if email else next(iter(accounts.values()), None)
-    login = (entry or {}).get("login_obj")
-    if login is None:
-        raise AlexaCloudUnavailable("Alexa Media Player has no active login (re-login needed)")
-    return login
+    return (entry or {}).get("login_obj")
+
+
+def _alexa_devices_api(hass):
+    """The core alexa_devices integration's AmazonEchoApi (with a live http wrapper), or None."""
+    try:
+        entries = hass.config_entries.async_entries(DATA_ALEXA_DEVICES)
+    except Exception:  # noqa: BLE001
+        return None
+    for entry in entries:
+        api = getattr(getattr(entry, "runtime_data", None), "api", None)
+        if api is not None and getattr(api, "_http_wrapper", None) is not None:
+            return api
+    return None
 
 
 def available(hass, email: str | None = None) -> bool:
-    """True if a piggyback session is present (no network call)."""
+    """True if EITHER piggyback session is present (no network call)."""
+    return _alexa_devices_api(hass) is not None or _amp_login(hass, email) is not None
+
+
+async def _graphql_via_alexa_devices(hass, api, body: dict[str, Any]) -> Any:
+    """Borrow the core integration's aiohttp session (cookies + csrf) for one POST."""
+    hw = getattr(api, "_http_wrapper", None)
+    session = getattr(hw, "_session", None)
+    if session is None:
+        raise AlexaCloudUnavailable("alexa_devices session not exposed")
+    base = getattr(getattr(api, "_session_state_data", None), "alexa_website_url", None) or "https://alexa.amazon.com"
+    csrf = getattr(hw, "_csrf_cookie", None)
+    if not csrf:  # cold start — read the csrf cookie straight off the jar
+        for c in session.cookie_jar:
+            if getattr(c, "key", None) == "csrf":
+                csrf = c.value
+                break
+    headers = {"Content-Type": "application/json", "x-amzn-caller-package": _CALLER_PKG}
+    if csrf:
+        headers["csrf"] = csrf
     try:
-        _login(hass, email)
-        return True
+        async with session.post(f"{base.rstrip('/')}{_NEXUS_PATH}", json=body, headers=headers) as resp:
+            if resp.status >= 400:
+                raise AlexaCloudUnavailable(f"alexa_devices request status {resp.status}")
+            return await resp.json(content_type=None)
     except AlexaCloudUnavailable:
-        return False
+        raise
+    except Exception as err:  # noqa: BLE001
+        raise AlexaCloudUnavailable(f"alexa_devices request failed: {err}") from err
 
 
-def _csrf(login) -> str | None:
+async def _graphql_via_amp(hass, body: dict[str, Any], email: str | None) -> Any:
+    """Fallback: a.m.p.'s AlexaLogin via alexapy's request machinery."""
+    login = _amp_login(hass, email)
+    if login is None:
+        raise AlexaCloudUnavailable("Alexa Media Player has no active login")
     try:
-        return login._get_cookies_from_session()["csrf"].value
-    except Exception:  # noqa: BLE001 - internal shape; jar also carries the cookie regardless
-        return None
+        from alexapy import AlexaAPI
+    except ImportError as err:
+        raise AlexaCloudUnavailable("alexapy not available") from err
+    headers = {}
+    try:
+        headers["csrf"] = login._get_cookies_from_session()["csrf"].value
+    except Exception:  # noqa: BLE001 - jar carries it regardless
+        pass
+    try:
+        resp = await AlexaAPI._static_request(
+            "post", login, _NEXUS_PATH, data=body, additional_headers=headers or None
+        )
+    except Exception as err:  # noqa: BLE001
+        raise AlexaCloudUnavailable(f"Alexa request failed: {err}") from err
+    if resp is None:
+        raise AlexaCloudUnavailable("Alexa rejected the request (>=400 — session may have expired)")
+    return await resp.json(content_type=None)
 
 
 async def async_graphql(hass, body: dict[str, Any], email: str | None = None) -> Any:
-    """POST a GraphQL body to /nexus/v1/graphql via a.m.p.'s session; return parsed JSON.
+    """POST a GraphQL body to /nexus/v1/graphql; return parsed JSON.
 
-    `body` is the GraphQL request object, e.g. {"query": "...", "variables": {...}}.
+    Multi-source: prefer the core `alexa_devices` session (official, self-healing cookies),
+    fall back to `alexa_media_player`. Every failure collapses to AlexaCloudUnavailable.
     """
+    errors: list[str] = []
+    api = _alexa_devices_api(hass)
+    if api is not None:
+        try:
+            raw = await _graphql_via_alexa_devices(hass, api, body)
+            return _normalize(raw)
+        except AlexaCloudUnavailable as err:
+            errors.append(f"alexa_devices: {err}")
     try:
-        from alexapy import AlexaAPI
-    except ImportError as err:  # a.m.p. (and its alexapy dep) not installed
-        raise AlexaCloudUnavailable("alexapy is not available (Alexa Media Player missing)") from err
+        raw = await _graphql_via_amp(hass, body, email)
+        return _normalize(raw)
+    except AlexaCloudUnavailable as err:
+        errors.append(f"alexa_media_player: {err}")
+    raise AlexaCloudUnavailable(
+        "No usable Alexa session — install Alexa Devices or Alexa Media Player and log in"
+        + (f" ({'; '.join(errors)})" if errors else "")
+    )
 
-    login = _login(hass, email)
-    headers = {}
-    csrf = _csrf(login)
-    if csrf:
-        headers["csrf"] = csrf  # belt-and-suspenders; the cookie jar also carries it
 
-    try:
-        resp = await AlexaAPI._static_request(
-            "post", login, "/nexus/v1/graphql", data=body,
-            additional_headers=headers or None,
-        )
-    except Exception as err:  # noqa: BLE001 - alexapy raises login/rate-limit errors; unify them
-        raise AlexaCloudUnavailable(f"Alexa request failed: {err}") from err
-    if resp is None:  # alexapy collapses >=400 to None
-        raise AlexaCloudUnavailable("Alexa rejected the request (>=400 — session may have expired)")
-
-    data = await resp.json(content_type=None)
-    node = data[0] if isinstance(data, list) else data  # endpoint accepts single or batched
+def _normalize(raw: Any) -> Any:
+    """The endpoint accepts single or batched; unwrap and surface GraphQL errors."""
+    node = raw[0] if isinstance(raw, list) else raw
     if isinstance(node, dict) and node.get("errors"):
         raise AlexaCloudUnavailable(f"GraphQL errors: {node['errors']}")
     return node

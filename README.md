@@ -94,10 +94,11 @@ Integration › Alexa Organizer**.
 
 **Requirements:**
 - **Home Assistant Cloud (Nabu Casa)** with Alexa enabled — the exposure path (the whole core).
-- **Only for the experimental [Alexa Room Sync](#experimental-alexa-room-sync):** the
-  [**Alexa Media Player**](https://github.com/alandtse/alexa_media_player) integration, installed
-  and logged in. Room Sync piggybacks its Amazon session to reach Alexa's internal API. The
-  exposure core does **not** need it.
+- **Only for the experimental [Alexa Room Sync](#experimental-alexa-room-sync):** an Amazon
+  session to piggyback — **either** the core [**Alexa Devices**](https://www.home-assistant.io/integrations/alexa_devices/)
+  integration (preferred: official, self-healing auth) **or** [**Alexa Media Player**](https://github.com/alandtse/alexa_media_player).
+  Room Sync borrows whichever is logged in (Alexa Devices first) to reach Alexa's internal API.
+  The exposure core does **not** need either.
 
 ## Use it
 
