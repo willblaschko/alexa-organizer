@@ -346,12 +346,22 @@ async def async_assign_plan(hass, email: str | None = None) -> dict:
             if m.get("id"):
                 ep_room[m["id"]] = info
 
-    # HA exposed entity friendly-name → area (the truth we snap Alexa to).
+    # HA exposed entity → area (the truth we snap Alexa to). Key on BOTH the registry name
+    # and the live friendly_name (what HA actually sends Alexa), since Alexa shows the latter.
     ha_area: dict[str, str] = {}
     try:
         for r in inventory.build_inventory(hass)["rows"]:
-            if r.get("area") and (r.get("desired") or r.get("exposed")) and not r.get("ghost"):
-                ha_area[str(r["name"]).strip().lower()] = r["area"]
+            if not (r.get("area") and (r.get("desired") or r.get("exposed")) and not r.get("ghost")):
+                continue
+            keys = {str(r["name"]).strip().lower()}
+            state = hass.states.get(r["entity_id"])
+            if state:
+                friendly = state.attributes.get("friendly_name")
+                if friendly:
+                    keys.add(str(friendly).strip().lower())
+            for key in keys:
+                if key:
+                    ha_area[key] = r["area"]
     except AlexaCloudUnavailable:
         pass
 
