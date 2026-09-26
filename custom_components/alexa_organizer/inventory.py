@@ -56,6 +56,7 @@ def build_inventory(hass) -> dict:
     expose_id, hide_id = _label_ids(hass)
     current = exposure.current_exposed(hass)
     live = policy.live_entity_ids(hass)
+    light_devices = policy.light_device_ids(hass)
 
     rows: list[dict] = []
     listed: set[str] = set()
@@ -73,6 +74,7 @@ def build_inventory(hass) -> dict:
             has_entity_category=entry.entity_category is not None,
             force_expose=force_expose,
             force_hide=force_hide,
+            sibling_light=entry.domain == "switch" and entry.device_id in light_devices,
         )
         rows.append(
             {

@@ -39,12 +39,16 @@ def classify(
     has_entity_category: bool,
     force_expose: bool,
     force_hide: bool,
+    sibling_light: bool = False,
 ) -> tuple[bool, str]:
     """Return (should_expose, human reason). The reason drives the UI's "why" column.
 
     Order matters: a HIDE label is an absolute kill switch; then an EXPOSE label
     force-includes; then the universal "never expose hidden / config / diagnostic"
     rule; then the domain rules.
+
+    `sibling_light`: this SWITCH shares a device with a light we already expose (a
+    power switch / feature toggle for that light) — pick the light, drop the switch.
     """
     if force_hide:
         return False, "label: alexa-hide"
@@ -57,6 +61,11 @@ def classify(
         return False, "hidden in HA"
     if has_entity_category:
         return False, "config/diagnostic"
+
+    # A switch that's really a companion of a light on the same device → the light is
+    # the control; don't clutter Alexa with the switch too.
+    if domain == "switch" and sibling_light:
+        return False, "companion of a light"
 
     # Lights and switches must be room-scoped (have an area) — that's what makes a
     # clean "turn on the <room> lights" target and drops area-less junk.
@@ -81,6 +90,7 @@ def decide(
     has_entity_category: bool,
     force_expose: bool,
     force_hide: bool,
+    sibling_light: bool = False,
 ) -> bool:
     """Return True if this entity should be exposed to Alexa (the boolean of `classify`)."""
     return classify(
@@ -90,7 +100,39 @@ def decide(
         has_entity_category=has_entity_category,
         force_expose=force_expose,
         force_hide=force_hide,
+        sibling_light=sibling_light,
     )[0]
+
+
+def light_device_ids(hass) -> set[str]:
+    """device_ids that have at least one LIGHT entity we'd expose by the base rules.
+
+    A switch on one of these devices is treated as a companion of the light (see
+    `classify`'s sibling_light) and deduped. Shared by desired_exposure + inventory
+    so the plan and the board agree on which switches are dropped.
+    """
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    out: set[str] = set()
+    for entry in ent_reg.entities.values():
+        if entry.domain != "light" or entry.disabled_by is not None or entry.device_id is None:
+            continue
+        area_id = entry.area_id
+        if area_id is None:
+            device = dev_reg.async_get(entry.device_id)
+            area_id = device.area_id if device else None
+        if decide(
+            domain="light",
+            has_area=area_id is not None,
+            hidden=entry.hidden_by is not None,
+            has_entity_category=entry.entity_category is not None,
+            force_expose=False,
+            force_hide=False,
+        ):
+            out.add(entry.device_id)
+    return out
 
 
 def desired_exposure(hass) -> set[str]:
@@ -115,6 +157,7 @@ def desired_exposure(hass) -> set[str]:
     name_to_id = {lbl.name.lower(): lbl.label_id for lbl in label_reg.labels.values()}
     expose_id = name_to_id.get(EXPOSE_LABEL.lower())
     hide_id = name_to_id.get(HIDE_LABEL.lower())
+    light_devices = light_device_ids(hass)
 
     desired: set[str] = set()
     for entry in ent_reg.entities.values():
@@ -135,6 +178,7 @@ def desired_exposure(hass) -> set[str]:
             has_entity_category=entry.entity_category is not None,
             force_expose=expose_id is not None and expose_id in labels,
             force_hide=hide_id is not None and hide_id in labels,
+            sibling_light=entry.domain == "switch" and entry.device_id in light_devices,
         ):
             desired.add(entry.entity_id)
 

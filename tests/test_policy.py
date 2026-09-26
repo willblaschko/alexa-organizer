@@ -15,6 +15,7 @@ def _d(
     has_entity_category=False,
     force_expose=False,
     force_hide=False,
+    sibling_light=False,
 ):
     return policy.decide(
         domain=domain,
@@ -23,7 +24,26 @@ def _d(
         has_entity_category=has_entity_category,
         force_expose=force_expose,
         force_hide=force_hide,
+        sibling_light=sibling_light,
     )
+
+
+def test_switch_with_sibling_light_is_deduped():
+    # A switch on a device that already exposes a light isn't its own voice target.
+    assert _d("switch", has_area=True, sibling_light=True) is False
+
+
+def test_switch_without_sibling_light_still_exposed():
+    assert _d("switch", has_area=True, sibling_light=False) is True
+
+
+def test_labeled_switch_with_sibling_light_still_exposed():
+    # An explicit alexa label wins over the dedupe.
+    assert _d("switch", sibling_light=True, force_expose=True) is True
+
+
+def test_light_is_never_deduped_by_a_sibling_light():
+    assert _d("light", has_area=True, sibling_light=True) is True
 
 
 def test_tier1_domains_exposed():
