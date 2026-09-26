@@ -461,14 +461,16 @@ export class AlexaPanel extends LitElement {
     return html`
       <section class="room card">
         <h2 class="rhead">${room.name} <span class="count">${room.devices.length}</span></h2>
-        ${this._boardBuckets(room.devices).map(
-          (bk) => html`
-            <div class="kindgroup group kind-${bk.kind}">
-              <h3 class="gcap">${bk.label}</h3>
-              <div class="rows">${bk.devices.map((d) => this._previewDeviceRow(d, room))}</div>
-            </div>
-          `
-        )}
+        <div class="kindgrid">
+          ${this._boardBuckets(room.devices).map(
+            (bk) => html`
+              <div class="kindgroup group kind-${bk.kind}">
+                <h3 class="gcap">${bk.label}</h3>
+                <div class="rows">${bk.devices.map((d) => this._previewDeviceRow(d, room))}</div>
+              </div>
+            `
+          )}
+        </div>
       </section>
     `;
   }
@@ -693,6 +695,13 @@ export class AlexaPanel extends LitElement {
       box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
     }
     /* Inside a room card: each kind is a tinted box with an accent rail. */
+    /* Kind boxes flow side-by-side on a wide room card, collapse to one column when narrow. */
+    .kindgrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+      align-items: start;
+    }
     .room .kindgroup {
       --kind: var(--secondary-text-color, #6b7280);
       border: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
@@ -700,10 +709,7 @@ export class AlexaPanel extends LitElement {
       border-radius: 10px;
       background: color-mix(in srgb, var(--kind) 7%, var(--card-background-color, #fff));
       padding: 4px 10px 8px;
-      margin-top: 10px;
-    }
-    .room .kindgroup:first-of-type {
-      margin-top: 0;
+      min-width: 0;
     }
     .room .kindgroup .gcap {
       color: var(--kind);
