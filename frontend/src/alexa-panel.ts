@@ -193,6 +193,7 @@ export class AlexaPanel extends LitElement {
   @state() private _speakerBusy = false;
   @state() private _speakerPick: Record<string, string> = {}; // room id -> chosen speaker endpoint id
   @state() private _speakerStatus: Record<string, string> = {};
+  @state() private _syncing = false; // post-apply: waiting for Alexa to reflect newly-exposed devices
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -418,7 +419,7 @@ export class AlexaPanel extends LitElement {
         ${this._alexaSection()}
         ${this._shSection()}
       </div>
-      ${this._hasPending ? this._deltaBar() : nothing}
+      ${this._hasPending || this._syncing ? this._deltaBar() : nothing}
     `;
   }
 
@@ -446,12 +447,14 @@ export class AlexaPanel extends LitElement {
       this._deviceRoomsBusy ||
       this._assignBusy ||
       this._shBusy ||
-      this._speakerBusy
+      this._speakerBusy ||
+      this._syncing
     )
       return;
     // Dependency order: expose/create endpoints & rooms first, place devices into rooms,
     // then set each room's preferred speaker (needs its speakers present), and finally the
     // destructive cleanups (deregister / forget) so nothing organized gets pulled early.
+    const exposedNew = this._summary.expose; // capture before the diff collapses
     if (this._hasExposure) await this._apply(false);
     if (this._roomInclude.size > 0) await this._applyRoomOps();
     if (this._assignInclude.size > 0) await this._applyAssigns();
@@ -459,6 +462,40 @@ export class AlexaPanel extends LitElement {
     if (this._speakerCount > 0) await this._applySpeakers();
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._shRemove.size > 0) await this._applySh();
+    // B-lite: if we just exposed new devices, wait for Alexa's smart-home sync to catch up,
+    // then refresh the open plans so the new endpoints surface for review — never auto-placed.
+    if (exposedNew > 0) await this._syncAndRefresh();
+  }
+
+  private get _alexaEndpointCount(): number {
+    return (this._deviceRooms?.devices ?? []).length;
+  }
+
+  private async _syncAndRefresh(): Promise<void> {
+    // Only worth waiting if a placement tool is open to refresh the new devices into.
+    if (!this._deviceRooms && !this._assignPlan && !this._speakers) return;
+    this._syncing = true;
+    try {
+      if (this._deviceRooms) {
+        const baseline = this._alexaEndpointCount;
+        // Bounded poll (~48s): re-read the device list until Alexa shows a new endpoint,
+        // then stop. Timing out is fine — we refresh with whatever synced so far.
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 4000));
+          await this._loadDeviceRooms();
+          if (this._alexaEndpointCount > baseline) break;
+        }
+      } else {
+        // No endpoint list open to signal on — give Alexa a short beat, then refresh.
+        await new Promise((r) => setTimeout(r, 8000));
+      }
+      // Refresh the other opened plans so the new endpoints appear everywhere for review.
+      if (this._assignPlan) await this._loadAssignPlan();
+      if (this._speakers) await this._loadSpeakers();
+      if (this._roomPlan) await this._loadRoomPlan();
+    } finally {
+      this._syncing = false;
+    }
   }
 
   private async _loadRoomPlan(): Promise<void> {
@@ -1094,7 +1131,8 @@ export class AlexaPanel extends LitElement {
       this._deviceRoomsBusy ||
       this._assignBusy ||
       this._shBusy ||
-      this._speakerBusy;
+      this._speakerBusy ||
+      this._syncing;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -1113,7 +1151,7 @@ export class AlexaPanel extends LitElement {
               ${this._detailsOpen ? "Hide" : "Details"}
             </button>
             <button class="apply" ?disabled=${busy} @click=${this._applyAll}>
-              ${busy ? "Applying…" : "Apply all"}
+              ${this._syncing ? "Waiting for Alexa…" : busy ? "Applying…" : "Apply all"}
             </button>
           </div>
         </div>
