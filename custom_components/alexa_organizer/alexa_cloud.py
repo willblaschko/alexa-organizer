@@ -311,6 +311,69 @@ async def async_device_rooms(hass, email: str | None = None) -> dict:
     return {"rooms": rooms, "devices": devices}
 
 
+# Endpoint categories that can be a room's preferred speaker (brand-agnostic: Echos are
+# ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
+_SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
+
+_SET_SPEAKER = (
+    "mutation s($id:String!,$spk:[GroupEndpointSpeakerInput!]!,$t:PlayMusicTargetingType!){"
+    "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,selectedSpeakers:$spk,"
+    "playMusicTargetingType:$t}){playMusicTargetingType selectedSpeakers{type endpointId}}}"
+)
+
+
+async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
+    """Per room: its current preferred speaker(s) + the speaker-capable members to choose from.
+
+    Only rooms that actually have a speaker option are returned — so this works for any house
+    (Echo-only, Sonos, mixed) with no brand assumption. Read-only.
+    """
+    groups = await async_list_groups(hass, email)
+    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+
+    info: dict[str, dict] = {}
+    for e in eps:
+        info[e["id"]] = {
+            "name": ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or e["id"],
+            "category": ((e.get("displayCategories") or {}).get("primary") or {}).get("value") or "",
+        }
+
+    out: list[dict] = []
+    for g in groups:
+        members = [m["id"] for m in (g.get("memberDevices") or {}).get("items") or [] if m.get("id")]
+        candidates = [
+            {"endpointId": mid, "name": info.get(mid, {}).get("name", mid)}
+            for mid in members
+            if info.get(mid, {}).get("category") in _SPEAKER_CATEGORIES
+        ]
+        if not candidates:
+            continue
+        sc = g.get("speakerConfiguration") or {}
+        current = [s.get("endpointId") for s in (sc.get("selectedSpeakers") or []) if s.get("endpointId")]
+        out.append(
+            {
+                "room_id": g["id"],
+                "room_name": _group_name(g),
+                "current_id": current[0] if current else None,
+                "candidates": sorted(candidates, key=lambda c: c["name"].lower()),
+            }
+        )
+    return sorted(out, key=lambda r: r["room_name"].lower())
+
+
+async def async_set_preferred_speaker(
+    hass, room_id: str, endpoint_id: str, email: str | None = None
+) -> None:
+    """Set one room's preferred speaker (brand-agnostic — Echo, Sonos, whatever's in the room)."""
+    speakers = [{"type": "PRIMARY", "endpointId": endpoint_id}]
+    await async_graphql(
+        hass,
+        {"query": _SET_SPEAKER, "variables": {"id": room_id, "spk": speakers, "t": "ALL_THE_TIME"}},
+        email,
+    )
+
+
 _FORGET = "mutation f($id:EndpointId!){forgetEndpoint(forgetEndpointInput:{endpointId:$id}){endpointId}}"
 
 

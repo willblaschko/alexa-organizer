@@ -60,6 +60,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_device_rooms)
         websocket_api.async_register_command(hass, ws_assign_plan)
         websocket_api.async_register_command(hass, ws_smarthome_cleanup)
+        websocket_api.async_register_command(hass, ws_room_speakers)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -241,3 +242,17 @@ async def ws_smarthome_cleanup(hass: HomeAssistant, connection, msg) -> None:
         connection.send_result(msg["id"], {"available": False, "reason": str(err)})
         return
     connection.send_result(msg["id"], {"available": True, "candidates": candidates})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/room_speakers"})
+@websocket_api.async_response
+async def ws_room_speakers(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: each room's preferred speaker + the speaker-capable members to pick from."""
+    from . import alexa_cloud
+
+    try:
+        rooms = await alexa_cloud.async_room_speakers(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    connection.send_result(msg["id"], {"available": True, "rooms": rooms})

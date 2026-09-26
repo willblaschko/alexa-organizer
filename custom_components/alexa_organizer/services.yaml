@@ -70,6 +70,21 @@ forget_endpoint:
       selector:
         text:
 
+set_preferred_speaker:
+  name: Set a room's preferred speaker (experimental)
+  description: EXPERIMENTAL — choose which speaker in an Alexa room answers "play music here" (brand-agnostic — an Echo, a Sonos, whatever is in the room). Called per-room by the panel.
+  fields:
+    room_id:
+      name: Room id
+      required: true
+      selector:
+        text:
+    endpoint_id:
+      name: Speaker endpoint id
+      required: true
+      selector:
+        text:
+
 alexa_devices:
   name: Clean up Alexa device registrations (experimental)
   description: EXPERIMENTAL — lists your Amazon device registrations and flags the likely junk (companion-app entries, duplicates). Default is a preview that changes nothing; apply true removes the flagged ones. Protected devices are never touched.

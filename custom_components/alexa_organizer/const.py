@@ -44,6 +44,8 @@ SERVICE_MOVE_DEVICE = "move_device"
 SERVICE_ASSIGN_PREVIEW = "assign_preview"
 # Experimental: remove ONE Alexa smart-home endpoint (per-op, for panel status).
 SERVICE_FORGET_ENDPOINT = "forget_endpoint"
+# Experimental: set ONE room's preferred speaker (brand-agnostic — Echo/Sonos/etc.).
+SERVICE_SET_PREFERRED_SPEAKER = "set_preferred_speaker"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.

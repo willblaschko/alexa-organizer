@@ -31,6 +31,7 @@ from .const import (
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
     SERVICE_ROOM_OP,
+    SERVICE_SET_PREFERRED_SPEAKER,
 )
 from .panel import async_register_panel, async_unregister_panel
 
@@ -45,6 +46,7 @@ _ALL_SERVICES = (
     SERVICE_MOVE_DEVICE,
     SERVICE_ASSIGN_PREVIEW,
     SERVICE_FORGET_ENDPOINT,
+    SERVICE_SET_PREFERRED_SPEAKER,
 )
 
 
@@ -317,6 +319,27 @@ def _register_services(hass: HomeAssistant) -> None:
         SERVICE_FORGET_ENDPOINT,
         forget_endpoint,
         schema=vol.Schema({vol.Required("endpoint_id"): str}),
+    )
+
+    async def set_preferred_speaker(call: ServiceCall) -> None:
+        from . import alexa_cloud
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        try:
+            await alexa_cloud.async_set_preferred_speaker(
+                hass, call.data["room_id"], call.data["endpoint_id"]
+            )
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            raise HomeAssistantError(str(err)) from err
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_PREFERRED_SPEAKER,
+        set_preferred_speaker,
+        schema=vol.Schema(
+            {vol.Required("room_id"): str, vol.Required("endpoint_id"): str}
+        ),
     )
 
     async def assign_preview(_call: ServiceCall) -> None:
