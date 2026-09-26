@@ -940,6 +940,7 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
     area_suggest = [{"id": r["name"], "name": r["name"]} for r in rooms if r.get("in_ha")]
 
     g: dict[str, list] = {k: [] for k in _PLAN_GROUP_ORDER}
+    need_rooms: dict[str, str] = {}  # norm area → display name, for areas we must create + fill
 
     # 1. Expose / hide — live entities whose actual exposure ≠ the policy's desire.
     for r in rows:
@@ -1021,12 +1022,14 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                     "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": target},
                 })
         else:
-            # The HA area has no Alexa room yet — create it and place the device in one step.
+            # The HA area has no Alexa room yet. The lane queue creates it (create_room lane)
+            # THEN places the device (place lane), threading the new room id via `area`.
+            need_rooms[_norm(area_name)] = area_name
             g["place"].append({
                 "id": f"move:{eid}", "group": "place",
                 "title": f"Put {d.get('name')} in {area_name}", "detail": "creates the room",
                 "suggested": True, "destructive": False,
-                "action": {"kind": "move_to_area", "endpoint_id": eid, "from": d.get("room_id"), "area": area_name},
+                "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": "", "area": area_name},
             })
 
     # 4. Preferred speaker — the room's main Echo, when unset and unambiguous.
@@ -1063,16 +1066,21 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                 "action": {"kind": "remove_endpoint", "endpoint_id": eid},
             })
 
-    # A create-and-place op already makes the room, so drop any separate "create room" op
-    # for the same area (no duplicate ask).
-    created_areas = {
-        _norm(op["action"]["area"]) for op in g["place"] if op["action"]["kind"] == "move_to_area"
-    }
-    if created_areas:
-        g["rooms"] = [
-            o for o in g["rooms"]
-            if not (o["action"].get("op") == "create" and _norm(o["action"]["name"]) in created_areas)
-        ]
+    # Areas that placements need: ensure a SUGGESTED create-room op exists (the create_room
+    # lane runs first and hands its id to the place lane). Upgrade an opt-in create if one
+    # was already emitted, else add one; never leave a placement targeting a missing room.
+    have_create = {_norm(o["action"]["name"]) for o in g["rooms"] if o["action"].get("op") == "create"}
+    for o in g["rooms"]:
+        if o["action"].get("op") == "create" and _norm(o["action"]["name"]) in need_rooms:
+            o["suggested"] = True
+    for an, name in need_rooms.items():
+        if an not in have_create:
+            g["rooms"].append({
+                "id": f"room:create:{name}", "group": "rooms",
+                "title": f"Create room {name}", "detail": "for its devices",
+                "suggested": True, "destructive": False,
+                "action": {"kind": "room_op", "op": "create", "name": name},
+            })
 
     groups = [
         {"key": k, "title": _PLAN_TITLES[k], "destructive": k in _PLAN_DESTRUCTIVE, "ops": g[k]}

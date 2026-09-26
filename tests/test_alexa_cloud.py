@@ -364,14 +364,18 @@ def test_plan_places_into_canonical_renamed_room():
 
 
 def test_plan_creates_and_places_for_ha_area_with_no_alexa_room():
-    # Guest Bedroom is an HA area with devices but no Alexa room yet → create-and-place
-    # (one op that makes the room if needed, then puts the device in it).
+    # Guest Bedroom is an HA area with devices but no Alexa room yet. The queue creates the
+    # room (create_room lane, SUGGESTED) then places the device (place lane), threading the
+    # id via `area`. So the plan carries BOTH a suggested create and an area-tagged move.
     light = _bdev("Guest Bedroom Main Lights", "ha", endpoint_id="e1", room_id=None, area="Guest Bedroom")
     area_room = {"id": None, "name": "Guest Bedroom", "in_alexa": False, "in_ha": True,
                  "preferred_id": None, "devices": []}
     plan = ac.assemble_plan({"rooms": [area_room], "unroomed": [light]}, [], [])
-    ops = _groups(plan)["place"]["ops"]
-    assert ops[0]["action"] == {"kind": "move_to_area", "endpoint_id": "e1", "from": None, "area": "Guest Bedroom"}
+    g = _groups(plan)
+    create = [o for o in g["rooms"]["ops"] if o["action"].get("op") == "create"]
+    assert create and create[0]["action"]["name"] == "Guest Bedroom" and create[0]["suggested"] is True
+    move = g["place"]["ops"][0]
+    assert move["action"] == {"kind": "move", "endpoint_id": "e1", "from": None, "to": "", "area": "Guest Bedroom"}
 
 
 def test_plan_vacuum_is_pulled_out_of_its_room():

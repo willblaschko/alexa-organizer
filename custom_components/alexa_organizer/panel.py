@@ -63,6 +63,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_room_speakers)
         websocket_api.async_register_command(hass, ws_board)
         websocket_api.async_register_command(hass, ws_plan)
+        websocket_api.async_register_command(hass, ws_create_room)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -285,3 +286,21 @@ async def ws_plan(hass: HomeAssistant, connection, msg) -> None:
     from . import alexa_cloud
 
     connection.send_result(msg["id"], await alexa_cloud.async_plan(hass))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): "alexa_organizer/create_room", vol.Required("name"): str}
+)
+@websocket_api.async_response
+async def ws_create_room(hass: HomeAssistant, connection, msg) -> None:
+    """Create one Alexa room and RETURN its new id — the apply queue threads it to the
+    placements that depend on it (create_room lane → place lane)."""
+    from . import alexa_cloud
+
+    try:
+        room_id = await alexa_cloud.async_create_group(hass, msg["name"])
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"ok": False, "reason": str(err)})
+        return
+    connection.send_result(msg["id"], {"ok": True, "id": room_id})

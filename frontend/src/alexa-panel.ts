@@ -10,6 +10,7 @@ import {
   type PlanGroup,
   type PlanOp,
 } from "./board-layout.js";
+import { planLanes } from "./queue.js";
 
 // Minimal shape of the objects HA hands a custom panel.
 interface HomeAssistant {
@@ -689,75 +690,101 @@ export class AlexaPanel extends LitElement {
   private async _applyPlan(): Promise<void> {
     if (this._applying || !this._plan) return;
     this._applying = true;
+    const plan = this._plan;
+    const norm = (s: string) => (s || "").trim().toLowerCase();
+    const svc = (name: string, data: Record<string, unknown>) =>
+      this.hass.callService("alexa_organizer", name, data);
+    const ws = (msg: Record<string, unknown>) => this.hass.connection.sendMessagePromise(msg);
+    const mark = (id: string, s: string) => (this._opStatus = { ...this._opStatus, [id]: s });
+    const run = async (id: string, fn: () => Promise<unknown>) => {
+      mark(id, "running");
+      try {
+        await fn();
+        mark(id, "done");
+      } catch {
+        mark(id, "error");
+      }
+    };
     try {
-      const groups = this._effectiveGroups();
-      const flat = groups.flatMap((g) => g.ops);
-      const accepted = (kind: string) =>
-        flat.filter((o) => this._accepted.has(o.id) && o.action.kind === kind);
-      const svc = (name: string, data: Record<string, unknown>) =>
-        this.hass.callService("alexa_organizer", name, data);
-      const mark = (id: string, s: string) => (this._opStatus = { ...this._opStatus, [id]: s });
-      const run = async (id: string, fn: () => Promise<unknown>) => {
-        mark(id, "running");
-        try {
-          await fn();
-          mark(id, "done");
-        } catch {
-          mark(id, "error");
-        }
-      };
-      const willExposeNew = accepted("expose").some((o) => o.action.to === true);
+      const accepted = this._effectiveGroups()
+        .flatMap((g) => g.ops)
+        .filter((o) => this._accepted.has(o.id));
+      const willExposeNew = accepted.some((o) => o.action.kind === "expose" && o.action.to === true);
 
-      // 1. Exposure — opt-outs pin the current state via an override label; then reconcile.
-      const exposeOps = flat.filter((o) => o.action.kind === "expose");
-      for (const o of exposeOps.filter((o) => !this._accepted.has(o.id))) {
-        await this.hass.connection.sendMessagePromise({
-          type: "alexa_organizer/set",
-          entity_id: o.action.entity_id,
-          expose: !(o.action.to as boolean),
-        });
-      }
-      if (exposeOps.length) {
-        exposeOps.filter((o) => this._accepted.has(o.id)).forEach((o) => mark(o.id, "running"));
-        await this.hass.connection.sendMessagePromise({ type: "alexa_organizer/apply", force: true });
-        exposeOps.filter((o) => this._accepted.has(o.id)).forEach((o) => mark(o.id, "done"));
-      }
+      // Threaded across lanes: HA area (normalized) → its room id (existing + freshly made).
+      const roomForArea = new Map<string, string>();
+      for (const r of plan.board.rooms ?? []) if (r.id) roomForArea.set(norm(r.name), r.id);
 
-      // 2. Rooms: create / rename (deletes run last).
-      for (const op of accepted("room_op").filter((o) => o.action.op !== "delete"))
-        await run(op.id, () => svc("room_op", { action: op.action.op, id: op.action.id, name: op.action.name }));
-      // 3. Place devices — into an existing room, or an HA area (creating the room first).
-      for (const op of accepted("move")) {
-        const data: Record<string, unknown> = { endpoint_id: op.action.endpoint_id };
-        if (op.action.from) data.from = op.action.from;
-        if (op.action.to) data.to = op.action.to;
-        await run(op.id, () => svc("move_device", data));
-      }
-      for (const op of accepted("move_to_area")) {
-        const data: Record<string, unknown> = { endpoint_id: op.action.endpoint_id, area: op.action.area };
-        if (op.action.from) data.from = op.action.from;
-        await run(op.id, () => svc("place_in_area", data));
-      }
-      // 4. Preferred speakers.
-      for (const op of accepted("preferred"))
-        await run(op.id, () => svc("set_preferred_speaker", { room_id: op.action.room_id, endpoint_id: op.action.endpoint_id }));
-      // 5. Remove unused devices (one batched call).
-      const rmDev = accepted("remove_device");
-      if (rmDev.length) {
-        rmDev.forEach((o) => mark(o.id, "running"));
-        try {
-          await svc("alexa_devices", { apply: true, endpoint_ids: rmDev.map((o) => o.action.endpoint_id) });
-          rmDev.forEach((o) => mark(o.id, "done"));
-        } catch {
-          rmDev.forEach((o) => mark(o.id, "error"));
+      // Run the queue lane by lane; ops within a lane are independent → in parallel.
+      for (const { lane, ops } of planLanes(accepted)) {
+        if (lane === "expose") {
+          // Opt-outs pin the current state via a label; then one reconcile (the review is consent).
+          const exposeAll = plan.groups.flatMap((g) => g.ops).filter((o) => o.action.kind === "expose");
+          for (const o of exposeAll.filter((o) => !this._accepted.has(o.id)))
+            await ws({ type: "alexa_organizer/set", entity_id: o.action.entity_id, expose: !(o.action.to as boolean) });
+          ops.forEach((o) => mark(o.id, "running"));
+          try {
+            await ws({ type: "alexa_organizer/apply", force: true });
+            ops.forEach((o) => mark(o.id, "done"));
+          } catch {
+            ops.forEach((o) => mark(o.id, "error"));
+          }
+        } else if (lane === "create_room") {
+          await Promise.all(
+            ops.map((op) =>
+              run(op.id, async () => {
+                const res = (await ws({ type: "alexa_organizer/create_room", name: op.action.name })) as {
+                  ok: boolean;
+                  id?: string;
+                  reason?: string;
+                };
+                if (!res.ok || !res.id) throw new Error(res.reason || "create failed");
+                roomForArea.set(norm(op.action.name as string), res.id);
+              })
+            )
+          );
+        } else if (lane === "rename_room") {
+          await Promise.all(
+            ops.map((op) => run(op.id, () => svc("room_op", { action: "rename", id: op.action.id, name: op.action.name })))
+          );
+        } else if (lane === "place") {
+          await Promise.all(
+            ops.map((op) =>
+              run(op.id, () => {
+                const a = op.action;
+                let to = (a.to as string) || "";
+                if (!to && a.area) {
+                  to = roomForArea.get(norm(a.area)) ?? "";
+                  if (!to) throw new Error("room not created"); // don't strand: skip if create failed
+                }
+                const data: Record<string, unknown> = { endpoint_id: a.endpoint_id };
+                if (a.from) data.from = a.from;
+                if (to) data.to = to;
+                return svc("move_device", data);
+              })
+            )
+          );
+        } else if (lane === "preferred") {
+          await Promise.all(
+            ops.map((op) => run(op.id, () => svc("set_preferred_speaker", { room_id: op.action.room_id, endpoint_id: op.action.endpoint_id })))
+          );
+        } else if (lane === "remove") {
+          const devs = ops.filter((o) => o.action.kind === "remove_device");
+          const eps = ops.filter((o) => o.action.kind === "remove_endpoint");
+          if (devs.length) {
+            devs.forEach((o) => mark(o.id, "running"));
+            try {
+              await svc("alexa_devices", { apply: true, endpoint_ids: devs.map((o) => o.action.endpoint_id) });
+              devs.forEach((o) => mark(o.id, "done"));
+            } catch {
+              devs.forEach((o) => mark(o.id, "error"));
+            }
+          }
+          await Promise.all(eps.map((op) => run(op.id, () => svc("forget_endpoint", { endpoint_id: op.action.endpoint_id }))));
+        } else if (lane === "delete_room") {
+          await Promise.all(ops.map((op) => run(op.id, () => svc("room_op", { action: "delete", id: op.action.id }))));
         }
       }
-      // 6. Remove duplicate / stray endpoints.
-      for (const op of accepted("remove_endpoint"))
-        await run(op.id, () => svc("forget_endpoint", { endpoint_id: op.action.endpoint_id }));
-      // 7. Delete empty rooms (last).
-      for (const op of accepted("room_op").filter((o) => o.action.op === "delete"))
-        await run(op.id, () => svc("room_op", { action: "delete", id: op.action.id }));
 
       // Wait for Alexa to reflect newly-exposed devices, then recompute the plan.
       if (willExposeNew) {
