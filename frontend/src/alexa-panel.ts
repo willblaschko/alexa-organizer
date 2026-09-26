@@ -2,9 +2,12 @@ import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   layoutBoard,
+  projectBoard,
   type BoardData,
   type BoardDevice,
   type BoardRoom,
+  type Plan,
+  type PlanGroup,
 } from "./board-layout.js";
 
 // Minimal shape of the objects HA hands a custom panel.
@@ -201,9 +204,15 @@ export class AlexaPanel extends LitElement {
   @state() private _speakerPick: Record<string, string> = {}; // room id -> chosen speaker endpoint id
   @state() private _speakerStatus: Record<string, string> = {};
   @state() private _syncing = false; // post-apply: waiting for Alexa to reflect newly-exposed devices
-  @state() private _view: "board" | "classic" = "board";
+  @state() private _view: "plan" | "board" | "classic" = "plan";
   @state() private _board: BoardData | null = null;
   @state() private _boardBusy = false;
+  @state() private _plan: Plan | null = null;
+  @state() private _planBusy = false;
+  @state() private _accepted = new Set<string>(); // plan op ids the user will apply
+  @state() private _reviewOpen = false;
+  @state() private _opStatus: Record<string, string> = {}; // op id -> pending/running/done/error
+  @state() private _applying = false;
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -211,7 +220,7 @@ export class AlexaPanel extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     void this._load();
-    void this._loadBoard(); // board is the default view; kicks off the aggregated read
+    void this._loadPlan(); // plan is the default view; computes the whole opinion
     window.addEventListener("resize", this._onResize);
     this._ro = new ResizeObserver(() => this._positionBar());
     this._ro.observe(this);
@@ -374,21 +383,23 @@ export class AlexaPanel extends LitElement {
         <header>
           <div class="titles">
             <h1>Alexa Organizer</h1>
-            <p class="sub">
-              Grouped by your Home Assistant areas. Controls what Alexa sees — organize the
-              actual rooms &amp; groups in the Alexa app.
-            </p>
+            <p class="sub">Home Assistant is your house. This keeps Alexa matched to it.</p>
           </div>
           <div class="headright">
             <div class="viewtoggle">
+              <button class=${this._view === "plan" ? "on" : ""} @click=${() => (this._view = "plan")}>
+                Home
+              </button>
               <button class=${this._view === "board" ? "on" : ""} @click=${() => (this._view = "board")}>
                 Board
               </button>
               <button class=${this._view === "classic" ? "on" : ""} @click=${() => (this._view = "classic")}>
-                Classic
+                Advanced
               </button>
             </div>
-            <span class="chip ok headernote" ?hidden=${this._hasPending}>In sync</span>
+            ${this._view !== "plan"
+              ? html`<span class="chip ok headernote" ?hidden=${this._hasPending}>In sync</span>`
+              : nothing}
           </div>
         </header>
 
@@ -406,7 +417,9 @@ export class AlexaPanel extends LitElement {
             </div>`
           : nothing}
 
-        ${this._view === "board"
+        ${this._view === "plan"
+          ? this._planView()
+          : this._view === "board"
           ? html`
               ${this._boardSection()}
               ${this._ghosts.length ? this._ghostSection() : nothing}
@@ -438,7 +451,7 @@ export class AlexaPanel extends LitElement {
               ${this._shSection()}
             `}
       </div>
-      ${this._hasPending || this._syncing ? this._deltaBar() : nothing}
+      ${this._view !== "plan" && (this._hasPending || this._syncing) ? this._deltaBar() : nothing}
     `;
   }
 
@@ -563,6 +576,260 @@ export class AlexaPanel extends LitElement {
     } finally {
       this._boardBusy = false;
     }
+  }
+
+  // ── The plan (default view): compute the whole opinion, review, one sync ─────
+
+  private async _loadPlan(): Promise<void> {
+    if (this._planBusy) return;
+    this._planBusy = true;
+    try {
+      const p = await this.hass.connection.sendMessagePromise<Plan>({
+        type: "alexa_organizer/plan",
+      });
+      this._plan = p;
+      this._accepted = new Set(
+        (p.groups ?? []).flatMap((g) => g.ops).filter((o) => o.suggested).map((o) => o.id)
+      );
+      this._opStatus = {};
+    } finally {
+      this._planBusy = false;
+    }
+  }
+
+  private _toggleOp(id: string): void {
+    const next = new Set(this._accepted);
+    next.has(id) ? next.delete(id) : next.add(id);
+    this._accepted = next;
+  }
+
+  private get _acceptedCount(): number {
+    return this._accepted.size;
+  }
+
+  private _planEndpointCount(): number {
+    const rooms = this._plan?.board.rooms ?? [];
+    const unroomed = this._plan?.board.unroomed ?? [];
+    return (
+      rooms.reduce((n, r) => n + r.devices.filter((d) => d.endpoint_id).length, 0) +
+      unroomed.filter((d) => d.endpoint_id).length
+    );
+  }
+
+  private async _applyPlan(): Promise<void> {
+    if (this._applying || !this._plan) return;
+    this._applying = true;
+    try {
+      const groups = this._plan.groups ?? [];
+      const flat = groups.flatMap((g) => g.ops);
+      const accepted = (kind: string) =>
+        flat.filter((o) => this._accepted.has(o.id) && o.action.kind === kind);
+      const svc = (name: string, data: Record<string, unknown>) =>
+        this.hass.callService("alexa_organizer", name, data);
+      const mark = (id: string, s: string) => (this._opStatus = { ...this._opStatus, [id]: s });
+      const run = async (id: string, fn: () => Promise<unknown>) => {
+        mark(id, "running");
+        try {
+          await fn();
+          mark(id, "done");
+        } catch {
+          mark(id, "error");
+        }
+      };
+      const willExposeNew = accepted("expose").some((o) => o.action.to === true);
+
+      // 1. Exposure — opt-outs pin the current state via an override label; then reconcile.
+      const exposeOps = flat.filter((o) => o.action.kind === "expose");
+      for (const o of exposeOps.filter((o) => !this._accepted.has(o.id))) {
+        await this.hass.connection.sendMessagePromise({
+          type: "alexa_organizer/set",
+          entity_id: o.action.entity_id,
+          expose: !(o.action.to as boolean),
+        });
+      }
+      if (exposeOps.length) {
+        exposeOps.filter((o) => this._accepted.has(o.id)).forEach((o) => mark(o.id, "running"));
+        await this.hass.connection.sendMessagePromise({ type: "alexa_organizer/apply", force: true });
+        exposeOps.filter((o) => this._accepted.has(o.id)).forEach((o) => mark(o.id, "done"));
+      }
+
+      // 2. Rooms: create / rename (deletes run last).
+      for (const op of accepted("room_op").filter((o) => o.action.op !== "delete"))
+        await run(op.id, () => svc("room_op", { action: op.action.op, id: op.action.id, name: op.action.name }));
+      // 3. Place devices.
+      for (const op of accepted("move")) {
+        const data: Record<string, unknown> = { endpoint_id: op.action.endpoint_id };
+        if (op.action.from) data.from = op.action.from;
+        if (op.action.to) data.to = op.action.to;
+        await run(op.id, () => svc("move_device", data));
+      }
+      // 4. Preferred speakers.
+      for (const op of accepted("preferred"))
+        await run(op.id, () => svc("set_preferred_speaker", { room_id: op.action.room_id, endpoint_id: op.action.endpoint_id }));
+      // 5. Remove unused devices (one batched call).
+      const rmDev = accepted("remove_device");
+      if (rmDev.length) {
+        rmDev.forEach((o) => mark(o.id, "running"));
+        try {
+          await svc("alexa_devices", { apply: true, endpoint_ids: rmDev.map((o) => o.action.endpoint_id) });
+          rmDev.forEach((o) => mark(o.id, "done"));
+        } catch {
+          rmDev.forEach((o) => mark(o.id, "error"));
+        }
+      }
+      // 6. Remove duplicate / stray endpoints.
+      for (const op of accepted("remove_endpoint"))
+        await run(op.id, () => svc("forget_endpoint", { endpoint_id: op.action.endpoint_id }));
+      // 7. Delete empty rooms (last).
+      for (const op of accepted("room_op").filter((o) => o.action.op === "delete"))
+        await run(op.id, () => svc("room_op", { action: "delete", id: op.action.id }));
+
+      // Wait for Alexa to reflect newly-exposed devices, then recompute the plan.
+      if (willExposeNew) {
+        const baseline = this._planEndpointCount();
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 4000));
+          await this._loadPlan();
+          if (this._planEndpointCount() > baseline) break;
+        }
+      } else {
+        await this._loadPlan();
+      }
+      this._reviewOpen = false;
+    } finally {
+      this._applying = false;
+    }
+  }
+
+  private _planView(): TemplateResult {
+    const p = this._plan;
+    if (!p) return html`<p class="muted">Computing your plan…</p>`;
+    return html`
+      ${this._hero()}
+      ${this._reviewOpen ? this._reviewSheet() : nothing}
+      ${!p.available
+        ? html`<div class="banner warn">
+            Connect Alexa to organize rooms &amp; devices — this needs the Alexa Media Player or
+            Alexa Devices integration signed in. Showing Home Assistant exposure only for now.
+          </div>`
+        : nothing}
+      ${this._planBoard()}
+    `;
+  }
+
+  private _hero(): TemplateResult {
+    const p = this._plan!;
+    const n = this._acceptedCount;
+    if (p.available && n === 0) {
+      return html`<div class="hero ok"><span class="tick">✓</span> Alexa matches your house</div>`;
+    }
+    return html`
+      <div class="hero">
+        <div class="herotext">
+          <strong>${n}</strong> change${n === 1 ? "" : "s"} to make Alexa match your house
+        </div>
+        <button class="apply" ?disabled=${this._applying || n === 0} @click=${() => (this._reviewOpen = true)}>
+          ${this._applying ? "Syncing…" : "Review & Sync"}
+        </button>
+      </div>
+    `;
+  }
+
+  private _reviewSheet(): TemplateResult {
+    const p = this._plan!;
+    const n = this._acceptedCount;
+    return html`
+      <div class="reviewsheet">
+        <div class="reviewhead">
+          <h2>Review changes</h2>
+          <button class="link" ?disabled=${this._applying} @click=${() => (this._reviewOpen = false)}>Close</button>
+        </div>
+        ${(p.groups ?? []).map((g) => this._reviewGroup(g))}
+        <div class="reviewfoot">
+          <button class="apply" ?disabled=${this._applying || n === 0} @click=${this._applyPlan}>
+            ${this._applying ? "Syncing…" : `Sync ${n} change${n === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private _reviewGroup(g: PlanGroup): TemplateResult {
+    return html`
+      <div class="reviewgroup ${g.destructive ? "danger" : ""}">
+        <h3>${g.title}</h3>
+        ${g.ops.map(
+          (o) => html`
+            <label class="reviewop">
+              ${this._statusDisc(this._opStatus[o.id])}
+              <input
+                type="checkbox"
+                .checked=${this._accepted.has(o.id)}
+                ?disabled=${this._applying}
+                @change=${() => this._toggleOp(o.id)}
+              />
+              <span class="optitle">${o.title}</span>
+              ${o.detail ? html`<span class="opdetail">${o.detail}</span>` : nothing}
+            </label>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  private _planBoard(): TemplateResult {
+    const p = this._plan!;
+    const laid = projectBoard(p.board, p.groups ?? [], this._accepted);
+    return html`
+      ${laid.rooms.map((r) => this._previewRoom(r))}
+      ${laid.unroomed.length
+        ? this._previewRoom({
+            id: null, name: "No room", in_alexa: false, in_ha: false, preferred_id: null,
+            devices: laid.unroomed,
+          })
+        : nothing}
+    `;
+  }
+
+  private _previewRoom(room: BoardRoom): TemplateResult {
+    return html`
+      <section class="room card">
+        <h2 class="rhead">${room.name} <span class="count">${room.devices.length}</span></h2>
+        ${this._boardBuckets(room.devices).map(
+          (bk) => html`
+            <div class="kindgroup group kind-${bk.kind}">
+              <h3 class="gcap">${bk.label}</h3>
+              <div class="rows">${bk.devices.map((d) => this._previewDeviceRow(d, room))}</div>
+            </div>
+          `
+        )}
+      </section>
+    `;
+  }
+
+  private _previewDeviceRow(d: BoardDevice, room: BoardRoom): TemplateResult {
+    const chip =
+      d.source === "ha"
+        ? `HA · ${DOMAIN_CHIP[d.domain ?? ""] ?? d.domain ?? "HA"}`
+        : d.source === "echo"
+          ? "Echo"
+          : "Alexa-only";
+    const preferred = !!(room.preferred_id && d.endpoint_id === room.preferred_id);
+    return html`
+      <div class="row ${d._removing ? "removing" : ""}">
+        <div class="info">
+          <div class="name ${d._removing ? "strike" : ""}">
+            ${preferred ? html`<span class="star on">★</span> ` : nothing}${d.name}
+          </div>
+          <div class="meta">
+            <span class="kind">${chip}</span>
+            ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
+            ${!d.synced ? html`<span class="reason">will sync to Alexa</span>` : nothing}
+            ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private _rowFor(entityId: string): Row | undefined {
@@ -1834,6 +2101,103 @@ export class AlexaPanel extends LitElement {
     .viewtoggle button.on {
       background: var(--primary-color, #2f6fed);
       color: #fff;
+    }
+    /* Plan view: hero status + review sheet */
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-left: 4px solid var(--primary-color, #2f6fed);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
+    }
+    .hero.ok {
+      border-left-color: var(--success-color, #2e7d32);
+      color: var(--success-color, #2e7d32);
+      font-weight: 600;
+    }
+    .hero .tick {
+      font-size: 1.2rem;
+      margin-right: 6px;
+    }
+    .hero .herotext {
+      font-size: 1.05rem;
+    }
+    .hero .herotext strong {
+      font-size: 1.35rem;
+    }
+    .hero .apply {
+      flex-shrink: 0;
+    }
+    .reviewsheet {
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 12px;
+      padding: 10px 16px 16px;
+      margin-bottom: 18px;
+      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
+    }
+    .reviewhead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--divider-color, #ececec);
+      padding-bottom: 8px;
+      margin-bottom: 6px;
+    }
+    .reviewhead h2 {
+      margin: 4px 0;
+    }
+    .reviewgroup {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--divider-color, #f0f0f0);
+    }
+    .reviewgroup h3 {
+      margin: 6px 2px;
+    }
+    .reviewgroup.danger h3 {
+      color: var(--error-color, #d33);
+    }
+    .reviewop {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px;
+      cursor: pointer;
+    }
+    .reviewop input {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+    }
+    .reviewop .optitle {
+      flex: 1;
+      min-width: 0;
+    }
+    .reviewop .opdetail {
+      color: var(--secondary-text-color, #888);
+      font-size: 0.82rem;
+    }
+    .reviewfoot {
+      display: flex;
+      justify-content: flex-end;
+      padding-top: 12px;
+    }
+    .name.strike {
+      text-decoration: line-through;
+      opacity: 0.6;
+    }
+    .reason.danger {
+      color: var(--error-color, #d33);
+    }
+    .row.removing {
+      opacity: 0.7;
     }
     .row {
       display: flex;
