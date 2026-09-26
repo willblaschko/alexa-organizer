@@ -180,77 +180,79 @@ def ha_area_names(hass) -> list[str]:
 
 
 def plan_room_sync(area_names: list[str], groups: list[dict]) -> list[dict]:
-    """Delta from HA areas → Alexa rooms as reviewable ops (suggestions only).
+    """Delta from HA areas → Alexa rooms as reviewable ops. HA areas are the truth.
 
-    - rename: an Alexa room matches an HA area by name (case-insensitive) but the exact
-      text differs → line it up with HA.
-    - create: an HA area with no Alexa room (suggested OFF — not every area wants one).
-    - delete: an Alexa room with no matching HA area; suggested ON only when it's EMPTY
-      (a ghost / bond artifact), left alone when it still holds devices.
+    HA-first, many-to-one. For each HA area we gather the Alexa rooms that belong to it —
+    an exact name match, or NAME VARIANTS (one name's word-set is a subset of the other's,
+    e.g. the churn twins "Media Room 2/3" for area "Media Room"). One becomes canonical
+    (renamed to the HA name); the rest are merge-deletes. Ops:
+    - rename: line an Alexa room up with its HA area (case fix, or the canonical variant).
+    - delete(merge): a duplicate variant folding into its HA area — suggested ON (its
+      devices move to the canonical room, then it's emptied).
+    - create: an HA area with no Alexa room at all (suggested OFF — not every area wants one).
+    - delete: an Alexa room matching NO HA area; suggested ON only when EMPTY (a ghost),
+      left opt-in when it still holds devices.
+
+    A numbered room that is ITS OWN HA area (real "Bedroom 2") exact-matches and is never
+    folded — so genuine second rooms are safe.
     """
 
     def norm(s: str) -> str:
         return s.strip().lower()
 
-    groups_by_norm = {norm(_group_name(g)): g for g in groups}
-    areas_by_norm = {norm(a): a for a in area_names}
-    ops: list[dict] = []
-    matched: set[str] = set()  # normalized names resolved by an EXACT match
-    create_areas: list[str] = []  # areas with no exact group (candidates for fuzzy/create)
-
-    for n, area in areas_by_norm.items():
-        g = groups_by_norm.get(n)
-        if g is not None:
-            matched.add(n)
-            gname = _group_name(g)
-            if gname != area:
-                ops.append({"op": "rename", "id": g["id"], "from": gname, "to": area, "suggested": True})
-        else:
-            create_areas.append(area)
-
-    # Alexa groups with no exact HA area — candidates for fuzzy pairing or deletion.
-    leftover_groups = {n: g for n, g in groups_by_norm.items() if n not in matched and n not in areas_by_norm}
-
-    # Conservative fuzzy pass: pair a leftover area with a leftover group when one
-    # name's word-set is a subset of the other's (e.g. "Media" ⊂ "Media Room"). These
-    # are almost-certainly the same room, so propose a rename (group → HA name) rather
-    # than create + delete — but opt-in (suggested off), never an automatic merge.
     def tokens(s: str) -> frozenset[str]:
         return frozenset(norm(s).split())
 
-    paired_groups: set[str] = set()
-    for area in create_areas[:]:
+    areas_by_norm = {norm(a): a for a in area_names}
+    ops: list[dict] = []
+    claimed: set[str] = set()  # normalized group names already assigned to some area
+
+    # Exact matches first, so a numbered room that is its own HA area keeps itself.
+    exact_of: dict[str, dict] = {}  # area-norm → its exactly-named group
+    for g in groups:
+        gn = norm(_group_name(g))
+        if gn in areas_by_norm:
+            exact_of.setdefault(gn, g)
+            claimed.add(gn)
+
+    for an, area in areas_by_norm.items():
         at = tokens(area)
-        best_key = None
-        best_overlap = 0
-        for gn, g in leftover_groups.items():
-            if gn in paired_groups:
-                continue
-            gt = tokens(_group_name(g))
-            if not (at <= gt or gt <= at):  # require a clean subset either direction
-                continue
-            overlap = len(at & gt)
-            if overlap > best_overlap:
-                best_overlap, best_key = overlap, gn
-        if best_key is not None:
-            g = leftover_groups[best_key]
-            paired_groups.add(best_key)
-            create_areas.remove(area)
-            ops.append(
-                {"op": "rename", "id": g["id"], "from": _group_name(g), "to": area,
-                 "suggested": False, "fuzzy": True}
-            )
-
-    for area in create_areas:
-        ops.append({"op": "create", "name": area, "suggested": False})
-
-    for n, g in leftover_groups.items():
-        if n in paired_groups:
+        # Variant rooms: subset either direction, not already claimed by another area.
+        variants = [
+            g for g in groups
+            if norm(_group_name(g)) not in claimed
+            and (at <= tokens(_group_name(g)) or tokens(_group_name(g)) <= at)
+        ]
+        exact = exact_of.get(an)
+        members = exact or (max(variants, key=_group_member_count) if variants else None)
+        if members is None:
+            ops.append({"op": "create", "name": area, "suggested": False})
             continue
+        # Canonical: rename to the HA area name when the text differs.
+        cn = norm(_group_name(members))
+        claimed.add(cn)
+        if _group_name(members) != area:
+            op = {"op": "rename", "id": members["id"], "from": _group_name(members), "to": area, "suggested": True}
+            if exact is None:
+                op["fuzzy"] = True
+            ops.append(op)
+        # Everything else that folds into this area is a merge-delete (its devices move out).
+        for g in variants:
+            if g is members or norm(_group_name(g)) in claimed:
+                continue
+            claimed.add(norm(_group_name(g)))
+            ops.append({
+                "op": "delete", "id": g["id"], "name": _group_name(g),
+                "empty": _group_member_count(g) == 0, "suggested": True, "merge": True,
+            })
+
+    # Alexa rooms matching no HA area at all — orphans; empty ghosts pre-checked.
+    for g in groups:
+        if norm(_group_name(g)) in claimed:
+            continue
+        claimed.add(norm(_group_name(g)))
         empty = _group_member_count(g) == 0
-        ops.append(
-            {"op": "delete", "id": g["id"], "name": _group_name(g), "empty": empty, "suggested": empty}
-        )
+        ops.append({"op": "delete", "id": g["id"], "name": _group_name(g), "empty": empty, "suggested": empty})
     return ops
 
 
@@ -908,8 +910,20 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
     rooms = board.get("rooms") or []
     unroomed = board.get("unroomed") or []
     all_devices = [d for r in rooms for d in (r.get("devices") or [])] + list(unroomed)
-    rooms_with_id = [{"id": r["id"], "name": r["name"]} for r in rooms if r.get("id")]
-    room_by_area = {_norm(r["name"]): r["id"] for r in rooms if r.get("id")}
+
+    # HA area (normalized) → its CANONICAL Alexa room id. Start from existing rooms, then
+    # apply the plan's renames so a device lands in the room its area is being consolidated
+    # into (e.g. "Media Room" → the id of the room being renamed "Media Room 2" → "Media Room").
+    area_to_room = {_norm(r["name"]): r["id"] for r in rooms if r.get("id")}
+    for o in room_ops:
+        if o["op"] == "rename":
+            area_to_room[_norm(o["to"])] = o["id"]
+    # For devices with no HA area (Echoes, strays), match the name to an HA area's room.
+    ha_area_targets = [
+        {"id": area_to_room[_norm(r["name"])], "name": r["name"]}
+        for r in rooms
+        if r.get("in_ha") and _norm(r["name"]) in area_to_room
+    ]
 
     g: dict[str, list] = {k: [] for k in _PLAN_GROUP_ORDER}
 
@@ -949,7 +963,9 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
             g["rooms_delete"].append({
                 "id": f"room:delete:{o['id']}", "group": "rooms_delete",
                 "title": f"Delete room {o['name']}",
-                "detail": "empty" if o.get("empty") else "still has devices",
+                "detail": "duplicate — its devices move to your room first"
+                if o.get("merge")
+                else ("empty" if o.get("empty") else "still has devices"),
                 "suggested": o.get("suggested", False), "destructive": True,
                 "action": {"kind": "room_op", "op": "delete", "id": o["id"]},
             })
@@ -960,9 +976,9 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
         if not eid:
             continue  # not in Alexa yet — nothing to move
         if d.get("source") == "ha" and d.get("area"):
-            target = room_by_area.get(_norm(d["area"]))
+            target = area_to_room.get(_norm(d["area"]))
         else:
-            target = _suggest_room(d.get("name", ""), rooms_with_id)
+            target = _suggest_room(d.get("name", ""), ha_area_targets)
         if target and target != d.get("room_id"):
             g["place"].append({
                 "id": f"move:{eid}", "group": "place",

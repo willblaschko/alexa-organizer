@@ -38,20 +38,19 @@ def test_room_sync_delete_only_empty_ghosts_suggested():
     assert by_id["g2"]["suggested"] is False and by_id["g2"]["empty"] is False
 
 
-def test_room_sync_fuzzy_rename_pairs_near_miss_names_opt_in():
-    # "Media" (HA) and "Media Room" (Alexa) are the same room — propose a rename
-    # (group → HA name), opt-in (suggested off), instead of create + delete.
+def test_room_sync_fuzzy_rename_folds_variant_into_ha_area():
+    # HA "Media" is the truth; Alexa "Media Room" is a variant → rename it to match (suggested).
     ops = ac.plan_room_sync(["Media"], [_group("g1", "Media Room", members=2)])
     assert ops == [
-        {"op": "rename", "id": "g1", "from": "Media Room", "to": "Media", "suggested": False, "fuzzy": True}
+        {"op": "rename", "id": "g1", "from": "Media Room", "to": "Media", "suggested": True, "fuzzy": True}
     ]
 
 
 def test_room_sync_fuzzy_matches_either_direction():
-    # HA name longer than the Alexa group name still pairs (subset either way).
+    # HA name longer than the Alexa group name still folds (subset either way).
     ops = ac.plan_room_sync(["Living Room"], [_group("g1", "Living", members=1)])
     assert ops == [
-        {"op": "rename", "id": "g1", "from": "Living", "to": "Living Room", "suggested": False, "fuzzy": True}
+        {"op": "rename", "id": "g1", "from": "Living", "to": "Living Room", "suggested": True, "fuzzy": True}
     ]
 
 
@@ -68,6 +67,23 @@ def test_room_sync_exact_match_wins_over_fuzzy():
     ops = ac.plan_room_sync(["Bedroom", "Bed"], [_group("g1", "Bedroom", members=1)])
     assert {"op": "create", "name": "Bed", "suggested": False} in ops
     assert not any(o["op"] == "rename" for o in ops)
+
+
+def test_room_sync_consolidates_numbered_duplicates_into_ha_area():
+    # HA has ONE "Media Room"; Alexa churned it into "Media Room 2/3". Fold both in:
+    # rename the fuller one to the HA name (canonical), merge-delete the rest (suggested).
+    groups = [_group("g2", "Media Room 2", members=3), _group("g3", "Media Room 3", members=1)]
+    ops = ac.plan_room_sync(["Media Room"], groups)
+    renames = [o for o in ops if o["op"] == "rename"]
+    deletes = [o for o in ops if o["op"] == "delete"]
+    assert renames == [{"op": "rename", "id": "g2", "from": "Media Room 2", "to": "Media Room", "suggested": True, "fuzzy": True}]
+    assert deletes == [{"op": "delete", "id": "g3", "name": "Media Room 3", "empty": False, "suggested": True, "merge": True}]
+
+
+def test_room_sync_numbered_room_that_is_its_own_ha_area_is_kept():
+    # "Bedroom 2" is a real second bedroom (its own HA area) → exact match, no folding.
+    ops = ac.plan_room_sync(["Bedroom", "Bedroom 2"], [_group("g1", "Bedroom"), _group("g2", "Bedroom 2")])
+    assert ops == []
 
 
 # ── _suggest_room ─────────────────────────────────────────────────────────────
@@ -326,6 +342,22 @@ def test_plan_rooms_create_rename_and_delete_split():
     assert {o["action"]["op"] for o in g["rooms"]["ops"]} == {"create", "rename"}
     assert g["rooms_delete"]["ops"][0]["action"] == {"kind": "room_op", "op": "delete", "id": "g2"}
     assert g["rooms_delete"]["destructive"] is True
+
+
+def test_plan_places_into_canonical_renamed_room():
+    # Media Room 2 (g2) is renamed to the HA area "Media Room"; a device in the duplicate
+    # Media Room 3 (g3) with HA area "Media Room" must move to g2 (canonical), not stay.
+    devA = _bdev("Speaker A", "ha", endpoint_id="e1", room_id="g2", area="Media Room")
+    devB = _bdev("Speaker B", "ha", endpoint_id="e2", room_id="g3", area="Media Room")
+    rooms = [_broom("g2", "Media Room 2", [devA]), _broom("g3", "Media Room 3", [devB])]
+    room_ops = [
+        {"op": "rename", "id": "g2", "from": "Media Room 2", "to": "Media Room", "suggested": True, "fuzzy": True},
+        {"op": "delete", "id": "g3", "name": "Media Room 3", "empty": False, "suggested": True, "merge": True},
+    ]
+    plan = ac.assemble_plan({"rooms": rooms, "unroomed": []}, [], room_ops)
+    g = _groups(plan)
+    moves = {o["action"]["endpoint_id"]: o["action"]["to"] for o in g["place"]["ops"]}
+    assert moves == {"e2": "g2"}  # devA already canonical (no move); devB folds in
 
 
 def test_plan_in_sync_when_nothing_suggested():
