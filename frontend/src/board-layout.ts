@@ -15,6 +15,7 @@ export interface BoardDevice {
   synced: boolean;
   protected: boolean;
   suggested_remove: boolean;
+  _removing?: boolean; // projected: this device will be removed by an accepted op
 }
 
 export interface BoardRoom {
@@ -31,6 +32,81 @@ export interface BoardData {
   reason?: string;
   rooms?: BoardRoom[];
   unroomed?: BoardDevice[];
+}
+
+// ── The one opinionated plan (mirrors the backend `assemble_plan` output) ──────
+
+export interface PlanAction {
+  kind: "expose" | "room_op" | "move" | "preferred" | "remove_device" | "remove_endpoint";
+  entity_id?: string;
+  to?: boolean | string; // expose → bool; move → target room id
+  from?: string | null;
+  endpoint_id?: string;
+  room_id?: string;
+  op?: "create" | "rename" | "delete";
+  id?: string;
+  name?: string;
+}
+
+export interface PlanOp {
+  id: string;
+  group: string;
+  title: string;
+  detail: string;
+  suggested: boolean;
+  destructive: boolean;
+  action: PlanAction;
+}
+
+export interface PlanGroup {
+  key: string;
+  title: string;
+  destructive: boolean;
+  ops: PlanOp[];
+}
+
+export interface Plan {
+  available: boolean;
+  reason?: string;
+  board: BoardData;
+  in_sync: boolean;
+  counts: Record<string, number>;
+  groups: PlanGroup[];
+}
+
+/**
+ * Project the ACCEPTED ops onto the board to show the future state: relocate moved
+ * devices, mark removed ones (`_removing`), and reflect exposure flips. Pure; never
+ * mutates the input, so the pristine board is preserved for computing real diffs.
+ */
+export function projectBoard(
+  board: BoardData,
+  groups: PlanGroup[],
+  accepted: Set<string>
+): { rooms: BoardRoom[]; unroomed: BoardDevice[] } {
+  const moves: Record<string, string> = {};
+  const removing = new Set<string>();
+  const exposeTo = new Map<string, boolean>();
+  for (const g of groups) {
+    for (const o of g.ops) {
+      if (!accepted.has(o.id)) continue;
+      const a = o.action;
+      if (a.kind === "move" && a.endpoint_id) moves[a.endpoint_id] = (a.to as string) ?? "";
+      else if ((a.kind === "remove_device" || a.kind === "remove_endpoint") && a.endpoint_id)
+        removing.add(a.endpoint_id);
+      else if (a.kind === "expose" && a.entity_id) exposeTo.set(a.entity_id, a.to as boolean);
+    }
+  }
+  const laid = layoutBoard(board.rooms ?? [], board.unroomed ?? [], moves);
+  const annotate = (d: BoardDevice): BoardDevice => ({
+    ...d,
+    _removing: d.endpoint_id ? removing.has(d.endpoint_id) : false,
+    exposed: d.entity_id && exposeTo.has(d.entity_id) ? exposeTo.get(d.entity_id)! : d.exposed,
+  });
+  return {
+    rooms: laid.rooms.map((r) => ({ ...r, devices: r.devices.map(annotate) })),
+    unroomed: laid.unroomed.map(annotate),
+  };
 }
 
 /**
