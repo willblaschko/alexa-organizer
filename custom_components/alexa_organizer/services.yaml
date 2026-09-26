@@ -17,4 +17,69 @@ preview:
 
 alexa_rooms:
   name: List Alexa rooms (experimental)
-  description: EXPERIMENTAL, read-only — lists the account's Alexa device groups (rooms) by borrowing the Alexa Media Player integration's session. Proves the Room Sync piggyback works. Requires Alexa Media Player installed and logged in. Makes no changes.
+  description: EXPERIMENTAL, read-only — lists the account's Alexa device groups (rooms) by borrowing the Alexa Media Player or Alexa Devices session. Requires one of those installed and logged in. Makes no changes.
+
+room_op:
+  name: Apply one Alexa room op (experimental)
+  description: EXPERIMENTAL — create, rename, or delete a single Alexa room. Called per-op by the panel so it can show per-op status. Requires an Alexa session (Alexa Devices or Alexa Media Player).
+  fields:
+    action:
+      name: Action
+      required: true
+      selector:
+        select:
+          options: [create, rename, delete]
+    id:
+      name: Room id (rename/delete)
+      selector:
+        text:
+    name:
+      name: Name (create/rename)
+      selector:
+        text:
+
+move_device:
+  name: Move a device between Alexa rooms (experimental)
+  description: EXPERIMENTAL — move one Alexa endpoint out of its current room and into another (either side optional). Called per-move by the panel.
+  fields:
+    endpoint_id:
+      name: Endpoint id
+      required: true
+      selector:
+        text:
+    from:
+      name: From room id
+      selector:
+        text:
+    to:
+      name: To room id
+      selector:
+        text:
+
+assign_preview:
+  name: Preview device→room assignments (experimental)
+  description: EXPERIMENTAL, read-only — reports which exposed HA devices would snap into their HA-area's Alexa room (matched by name), plus how many endpoints didn't match. Makes no changes.
+
+alexa_devices:
+  name: Clean up Alexa device registrations (experimental)
+  description: EXPERIMENTAL — lists your Amazon device registrations and flags the likely junk (companion-app entries, duplicates). Default is a preview that changes nothing; apply true removes the flagged ones. Protected devices are never touched.
+  fields:
+    apply:
+      name: Apply
+      description: Off = preview only (default). On = act on the flagged registrations.
+      default: false
+      selector:
+        boolean:
+    limit:
+      name: Max per call
+      description: How many to act on in one call. Small by default; omit or 0 for all.
+      example: 5
+      selector:
+        number:
+          min: 0
+          max: 500
+    endpoint_ids:
+      name: Specific endpoint ids
+      description: Act on exactly these (the panel uses this); overrides the flagged set.
+      selector:
+        object:
