@@ -311,6 +311,66 @@ async def async_device_rooms(hass, email: str | None = None) -> dict:
     return {"rooms": rooms, "devices": devices}
 
 
+_FORGET = "mutation f($id:EndpointId!){forgetEndpoint(forgetEndpointInput:{endpointId:$id}){endpointId}}"
+
+
+async def async_forget_endpoint(hass, endpoint_id: str, email: str | None = None) -> str:
+    """Remove one Alexa smart-home endpoint by id (forgetEndpoint)."""
+    node = await async_graphql(hass, {"query": _FORGET, "variables": {"id": endpoint_id}}, email)
+    return (((node.get("data") or {}).get("forgetEndpoint") or {}).get("endpointId")) or ""
+
+
+async def async_smarthome_cleanup(hass, email: str | None = None) -> list[dict]:
+    """Opinionated cleanup candidates among Alexa smart-home endpoints. Read-only.
+
+    Candidates = DUPLICATE endpoints (2nd+ sharing a name — the confident cruft signal) and
+    STRAY endpoints (name doesn't match any live exposed HA entity). A matched, first-of-its-
+    name endpoint is the real device and is NOT listed. Only duplicates are suggested for
+    removal by default; strays are shown but left for the user to opt in (they may be
+    other-source devices we can't judge — no HA back-reference exists).
+    """
+    from . import inventory
+
+    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+
+    ha_names: set[str] = set()
+    try:
+        for r in inventory.build_inventory(hass)["rows"]:
+            if r.get("ghost") or not (r.get("desired") or r.get("exposed")):
+                continue
+            ha_names.add(str(r["name"]).strip().lower())
+            state = hass.states.get(r["entity_id"])
+            if state and state.attributes.get("friendly_name"):
+                ha_names.add(str(state.attributes["friendly_name"]).strip().lower())
+    except AlexaCloudUnavailable:
+        pass
+
+    seen: set[str] = set()
+    out: list[dict] = []
+    for e in eps:
+        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
+        if dms and (((dms.get("deviceType") or {}).get("value") or {}).get("text")):
+            continue  # an Amazon device — handled by the device cleanup
+        name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or ""
+        key = name.strip().lower()
+        duplicate = key in seen
+        seen.add(key)
+        matched = key in ha_names
+        if not duplicate and matched:
+            continue  # the real, first-seen HA device — leave it
+        out.append(
+            {
+                "id": e["id"],
+                "name": name,
+                "duplicate": duplicate,
+                "matched": matched,
+                "suggested_remove": duplicate,  # confident signal only
+            }
+        )
+    return out
+
+
 def _suggest_room(name: str, rooms: list[dict]) -> str | None:
     """The room whose name the device name starts with (longest wins) — 'Kitchen Echo' → Kitchen."""
     ln = name.lower()

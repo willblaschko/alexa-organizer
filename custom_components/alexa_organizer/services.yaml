@@ -60,6 +60,16 @@ assign_preview:
   name: Preview device→room assignments (experimental)
   description: EXPERIMENTAL, read-only — reports which exposed HA devices would snap into their HA-area's Alexa room (matched by name), plus how many endpoints didn't match. Makes no changes.
 
+forget_endpoint:
+  name: Remove one Alexa smart-home endpoint (experimental)
+  description: EXPERIMENTAL — remove a single Alexa smart-home endpoint by id (a duplicate or stray). Called per-op by the panel's cleanup list.
+  fields:
+    endpoint_id:
+      name: Endpoint id
+      required: true
+      selector:
+        text:
+
 alexa_devices:
   name: Clean up Alexa device registrations (experimental)
   description: EXPERIMENTAL — lists your Amazon device registrations and flags the likely junk (companion-app entries, duplicates). Default is a preview that changes nothing; apply true removes the flagged ones. Protected devices are never touched.

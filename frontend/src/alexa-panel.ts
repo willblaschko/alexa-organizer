@@ -70,6 +70,20 @@ interface AssignPlan {
   unmatched?: number;
 }
 
+interface SmarthomeCandidate {
+  id: string;
+  name: string;
+  duplicate: boolean;
+  matched: boolean;
+  suggested_remove: boolean;
+}
+
+interface SmarthomeData {
+  available: boolean;
+  reason?: string;
+  candidates?: SmarthomeCandidate[];
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -153,6 +167,10 @@ export class AlexaPanel extends LitElement {
   @state() private _assignBusy = false;
   @state() private _assignInclude = new Set<string>(); // endpoint ids to assign
   @state() private _assignStatus: Record<string, string> = {};
+  @state() private _shPlan: SmarthomeData | null = null;
+  @state() private _shBusy = false;
+  @state() private _shRemove = new Set<string>(); // endpoint ids to forget
+  @state() private _shStatus: Record<string, string> = {};
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -375,6 +393,7 @@ export class AlexaPanel extends LitElement {
         ${this._assignSection()}
         ${this._deviceRoomsSection()}
         ${this._alexaSection()}
+        ${this._shSection()}
       </div>
       ${this._hasPending ? this._deltaBar() : nothing}
     `;
@@ -390,18 +409,27 @@ export class AlexaPanel extends LitElement {
       this._alexaRemove.size > 0 ||
       this._roomInclude.size > 0 ||
       this._moveCount > 0 ||
-      this._assignInclude.size > 0
+      this._assignInclude.size > 0 ||
+      this._shRemove.size > 0
     );
   }
 
   private async _applyAll(): Promise<void> {
-    if (this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy || this._assignBusy)
+    if (
+      this._busy ||
+      this._alexaBusy ||
+      this._roomBusy ||
+      this._deviceRoomsBusy ||
+      this._assignBusy ||
+      this._shBusy
+    )
       return;
     if (this._hasExposure) await this._apply(false);
     if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._roomInclude.size > 0) await this._applyRoomOps();
     if (this._assignInclude.size > 0) await this._applyAssigns();
     if (this._moveCount > 0) await this._applyMoves();
+    if (this._shRemove.size > 0) await this._applySh();
   }
 
   private async _loadRoomPlan(): Promise<void> {
@@ -525,6 +553,102 @@ export class AlexaPanel extends LitElement {
           ${included ? "On" : "Off"}
         </button>
       </div>
+    `;
+  }
+
+  private async _loadSmarthome(): Promise<void> {
+    if (this._shBusy) return;
+    this._shBusy = true;
+    try {
+      const plan = await this.hass.connection.sendMessagePromise<SmarthomeData>({
+        type: "alexa_organizer/smarthome_cleanup",
+      });
+      this._shPlan = plan;
+      this._shRemove = new Set(
+        (plan.candidates ?? []).filter((c) => c.suggested_remove).map((c) => c.id)
+      );
+      this._shStatus = {};
+    } finally {
+      this._shBusy = false;
+    }
+  }
+
+  private _toggleSh(id: string): void {
+    const next = new Set(this._shRemove);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this._shRemove = next;
+  }
+
+  private async _applySh(): Promise<void> {
+    const cands = (this._shPlan?.candidates ?? []).filter((c) => this._shRemove.has(c.id));
+    for (const c of cands) {
+      this._shStatus = { ...this._shStatus, [c.id]: "running" };
+      try {
+        await this.hass.callService("alexa_organizer", "forget_endpoint", { endpoint_id: c.id });
+        this._shStatus = { ...this._shStatus, [c.id]: "done" };
+      } catch {
+        this._shStatus = { ...this._shStatus, [c.id]: "error" };
+      }
+    }
+    await this._loadSmarthome();
+  }
+
+  private _shSection(): TemplateResult {
+    const p = this._shPlan;
+    return html`
+      <section class="alexa-exp">
+        <h2>Duplicate &amp; stray endpoints <span class="exp">experimental</span></h2>
+        <p class="muted">
+          Alexa smart-home endpoints that are duplicates (same name twice) or don't match a
+          live HA entity. Duplicates are pre-checked to remove; strays (maybe other-source) are
+          left for you to opt in.
+        </p>
+        ${!p
+          ? html`<button class="apply" ?disabled=${this._shBusy} @click=${this._loadSmarthome}>
+              ${this._shBusy ? "Loading…" : "Preview cleanup"}
+            </button>`
+          : p.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${p.reason ?? "no session"}. Needs Alexa Media Player or Alexa Devices.
+              </div>`
+            : this._shBody(p.candidates ?? [])}
+      </section>
+    `;
+  }
+
+  private _shBody(cands: SmarthomeCandidate[]): TemplateResult {
+    if (!cands.length) {
+      return html`<p class="muted">No duplicate or stray endpoints — clean.</p>`;
+    }
+    const row = (c: SmarthomeCandidate): TemplateResult => {
+      const on = this._shRemove.has(c.id);
+      const busy = this._busy || this._shBusy;
+      return html`<div class="row ${on ? "removing" : ""}">
+        ${this._statusDisc(this._shStatus[c.id])}
+        <div class="info">
+          <div class="name">${c.name || "(unnamed)"}</div>
+          <div class="meta"><span class="kind">${c.duplicate ? "duplicate" : "stray"}</span></div>
+        </div>
+        <button class="toggle ${on ? "rem" : "keepbtn"}" ?disabled=${busy}
+          @click=${() => this._toggleSh(c.id)}>${on ? "Remove" : "Keep"}</button>
+      </div>`;
+    };
+    const dups = cands.filter((c) => c.duplicate);
+    const strays = cands.filter((c) => !c.duplicate);
+    return html`
+      ${dups.length
+        ? html`<div class="kindgroup">
+            <h3>Duplicates <span class="count">${dups.length}</span></h3>
+            <div class="rows">${dups.map(row)}</div>
+          </div>`
+        : nothing}
+      ${strays.length
+        ? html`<div class="kindgroup">
+            <h3>Strays — not from HA <span class="count">${strays.length}</span></h3>
+            <div class="rows">${strays.map(row)}</div>
+          </div>`
+        : nothing}
     `;
   }
 
@@ -822,11 +946,16 @@ export class AlexaPanel extends LitElement {
 
   private _deltaBar(): TemplateResult {
     const s = this._summary;
-    const dev = this._alexaRemove.size;
+    const dev = this._alexaRemove.size + this._shRemove.size;
     const rooms = this._roomInclude.size;
     const moves = this._moveCount + this._assignInclude.size;
     const busy =
-      this._busy || this._alexaBusy || this._roomBusy || this._deviceRoomsBusy || this._assignBusy;
+      this._busy ||
+      this._alexaBusy ||
+      this._roomBusy ||
+      this._deviceRoomsBusy ||
+      this._assignBusy ||
+      this._shBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -859,6 +988,9 @@ export class AlexaPanel extends LitElement {
       .filter((d) => this._alexaRemove.has(d.id))
       .map((d) => d.name)
       .sort();
+    const shNames = (this._shPlan?.candidates ?? [])
+      .filter((c) => this._shRemove.has(c.id))
+      .map((c) => c.name || "(unnamed)");
     const roomOps = (this._roomPlan?.ops ?? []).filter((o) => this._roomInclude.has(this._opKey(o)));
     const assigns = (this._assignPlan?.assigns ?? []).filter((a) => this._assignInclude.has(a.id));
     const moves = Object.entries(this._moves);
@@ -870,6 +1002,7 @@ export class AlexaPanel extends LitElement {
       !changed.length &&
       !this._ghosts.length &&
       !devNames.length &&
+      !shNames.length &&
       !roomOps.length &&
       !assigns.length &&
       !moves.length;
@@ -886,6 +1019,9 @@ export class AlexaPanel extends LitElement {
         )}
         ${devNames.map(
           (n) => html`<div class="dline"><span class="minus">−</span> remove device · ${n}</div>`
+        )}
+        ${shNames.map(
+          (n) => html`<div class="dline"><span class="minus">−</span> remove endpoint · ${n}</div>`
         )}
         ${roomOps.map(
           (o) => html`<div class="dline">

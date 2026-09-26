@@ -59,6 +59,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_room_plan)
         websocket_api.async_register_command(hass, ws_device_rooms)
         websocket_api.async_register_command(hass, ws_assign_plan)
+        websocket_api.async_register_command(hass, ws_smarthome_cleanup)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -226,3 +227,17 @@ async def ws_assign_plan(hass: HomeAssistant, connection, msg) -> None:
             "unmatched": len(plan["unmatched"]),
         },
     )
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/smarthome_cleanup"})
+@websocket_api.async_response
+async def ws_smarthome_cleanup(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: duplicate / stray Alexa smart-home endpoints, with remove suggestions."""
+    from . import alexa_cloud
+
+    try:
+        candidates = await alexa_cloud.async_smarthome_cleanup(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    connection.send_result(msg["id"], {"available": True, "candidates": candidates})

@@ -42,6 +42,8 @@ SERVICE_MOVE_DEVICE = "move_device"
 # Experimental read-only diagnostic: preview assigning exposed HA devices to their
 # HA-area's Alexa room (verifies the endpoint-to-HA name-mapping before wiring writes).
 SERVICE_ASSIGN_PREVIEW = "assign_preview"
+# Experimental: remove ONE Alexa smart-home endpoint (per-op, for panel status).
+SERVICE_FORGET_ENDPOINT = "forget_endpoint"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.
