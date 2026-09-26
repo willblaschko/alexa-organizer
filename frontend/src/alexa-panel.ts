@@ -84,6 +84,24 @@ interface SmarthomeData {
   candidates?: SmarthomeCandidate[];
 }
 
+interface SpeakerCandidate {
+  endpointId: string;
+  name: string;
+}
+
+interface RoomSpeaker {
+  room_id: string;
+  room_name: string;
+  current_id: string | null;
+  candidates: SpeakerCandidate[];
+}
+
+interface RoomSpeakers {
+  available: boolean;
+  reason?: string;
+  rooms?: RoomSpeaker[];
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -171,6 +189,10 @@ export class AlexaPanel extends LitElement {
   @state() private _shBusy = false;
   @state() private _shRemove = new Set<string>(); // endpoint ids to forget
   @state() private _shStatus: Record<string, string> = {};
+  @state() private _speakers: RoomSpeakers | null = null;
+  @state() private _speakerBusy = false;
+  @state() private _speakerPick: Record<string, string> = {}; // room id -> chosen speaker endpoint id
+  @state() private _speakerStatus: Record<string, string> = {};
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -392,6 +414,7 @@ export class AlexaPanel extends LitElement {
         ${this._roomSection()}
         ${this._assignSection()}
         ${this._deviceRoomsSection()}
+        ${this._speakerSection()}
         ${this._alexaSection()}
         ${this._shSection()}
       </div>
@@ -410,7 +433,8 @@ export class AlexaPanel extends LitElement {
       this._roomInclude.size > 0 ||
       this._moveCount > 0 ||
       this._assignInclude.size > 0 ||
-      this._shRemove.size > 0
+      this._shRemove.size > 0 ||
+      this._speakerCount > 0
     );
   }
 
@@ -421,14 +445,19 @@ export class AlexaPanel extends LitElement {
       this._roomBusy ||
       this._deviceRoomsBusy ||
       this._assignBusy ||
-      this._shBusy
+      this._shBusy ||
+      this._speakerBusy
     )
       return;
+    // Dependency order: expose/create endpoints & rooms first, place devices into rooms,
+    // then set each room's preferred speaker (needs its speakers present), and finally the
+    // destructive cleanups (deregister / forget) so nothing organized gets pulled early.
     if (this._hasExposure) await this._apply(false);
-    if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._roomInclude.size > 0) await this._applyRoomOps();
     if (this._assignInclude.size > 0) await this._applyAssigns();
     if (this._moveCount > 0) await this._applyMoves();
+    if (this._speakerCount > 0) await this._applySpeakers();
+    if (this._alexaRemove.size > 0) await this._applyAlexaSelected();
     if (this._shRemove.size > 0) await this._applySh();
   }
 
@@ -779,6 +808,114 @@ export class AlexaPanel extends LitElement {
     return Object.keys(this._moves).length;
   }
 
+  private async _loadSpeakers(): Promise<void> {
+    if (this._speakerBusy) return;
+    this._speakerBusy = true;
+    try {
+      this._speakers = await this.hass.connection.sendMessagePromise<RoomSpeakers>({
+        type: "alexa_organizer/room_speakers",
+      });
+      this._speakerPick = {};
+      this._speakerStatus = {};
+    } finally {
+      this._speakerBusy = false;
+    }
+  }
+
+  private _onSpeakerChange(r: RoomSpeaker, value: string): void {
+    const next = { ...this._speakerPick };
+    if (value === (r.current_id ?? "")) delete next[r.room_id];
+    else next[r.room_id] = value;
+    this._speakerPick = next;
+  }
+
+  private get _speakerCount(): number {
+    return Object.keys(this._speakerPick).length;
+  }
+
+  private async _applySpeakers(): Promise<void> {
+    for (const [roomId, endpointId] of Object.entries(this._speakerPick)) {
+      if (!endpointId) continue; // a room's preferred speaker can't be "none"
+      this._speakerStatus = { ...this._speakerStatus, [roomId]: "running" };
+      try {
+        await this.hass.callService("alexa_organizer", "set_preferred_speaker", {
+          room_id: roomId,
+          endpoint_id: endpointId,
+        });
+        this._speakerStatus = { ...this._speakerStatus, [roomId]: "done" };
+      } catch {
+        this._speakerStatus = { ...this._speakerStatus, [roomId]: "error" };
+      }
+    }
+    await this._loadSpeakers();
+  }
+
+  private _speakerSection(): TemplateResult {
+    const sp = this._speakers;
+    return html`
+      <section class="alexa-exp">
+        <h2>Preferred speaker <span class="exp">experimental</span></h2>
+        <p class="muted">
+          In a room with more than one speaker, pick which one answers "play music here" — an
+          Echo, a Sonos, whatever Alexa sees in the room. Rooms with a single speaker are
+          skipped. Applies from the bar below.
+        </p>
+        ${!sp
+          ? html`<button class="apply" ?disabled=${this._speakerBusy} @click=${this._loadSpeakers}>
+              ${this._speakerBusy ? "Loading…" : "Load speakers"}
+            </button>`
+          : sp.available === false
+            ? html`<div class="banner warn">
+                Unavailable: ${sp.reason ?? "no session"}. Needs Alexa Media Player logged in.
+              </div>`
+            : this._speakerBody(sp)}
+      </section>
+    `;
+  }
+
+  private _speakerBody(sp: RoomSpeakers): TemplateResult {
+    const rooms = (sp.rooms ?? []).filter((r) => r.candidates.length > 1);
+    if (!rooms.length) {
+      return html`<div class="rows">
+        <div class="row">
+          <div class="info">
+            <div class="name muted">No room has more than one speaker to choose between.</div>
+          </div>
+        </div>
+      </div>`;
+    }
+    return html`
+      <div class="kindgroup group kind-speakers">
+        <div class="rows">${rooms.map((r) => this._speakerRow(r))}</div>
+      </div>
+    `;
+  }
+
+  private _speakerRow(r: RoomSpeaker): TemplateResult {
+    const staged = r.room_id in this._speakerPick;
+    const selected = staged ? this._speakerPick[r.room_id] : r.current_id ?? "";
+    const busy = this._speakerBusy || this._busy;
+    return html`
+      <div class="row ${staged ? "moving" : ""}">
+        ${this._statusDisc(this._speakerStatus[r.room_id])}
+        <div class="info"><div class="name">${r.room_name}</div></div>
+        <select
+          class="roomsel"
+          ?disabled=${busy}
+          @change=${(e: Event) => this._onSpeakerChange(r, (e.target as HTMLSelectElement).value)}
+        >
+          <option value="" ?selected=${selected === ""}>(none)</option>
+          ${r.candidates.map(
+            (c) =>
+              html`<option value=${c.endpointId} ?selected=${selected === c.endpointId}>
+                ${c.name}
+              </option>`
+          )}
+        </select>
+      </div>
+    `;
+  }
+
   private async _applyMoves(): Promise<void> {
     const byId = new Map((this._deviceRooms?.devices ?? []).map((d) => [d.id, d]));
     for (const [id, to] of Object.entries(this._moves)) {
@@ -949,13 +1086,15 @@ export class AlexaPanel extends LitElement {
     const dev = this._alexaRemove.size + this._shRemove.size;
     const rooms = this._roomInclude.size;
     const moves = this._moveCount + this._assignInclude.size;
+    const spk = this._speakerCount;
     const busy =
       this._busy ||
       this._alexaBusy ||
       this._roomBusy ||
       this._deviceRoomsBusy ||
       this._assignBusy ||
-      this._shBusy;
+      this._shBusy ||
+      this._speakerBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -967,6 +1106,7 @@ export class AlexaPanel extends LitElement {
             <span class="chip live" ?hidden=${!dev}>−${dev} device${dev === 1 ? "" : "s"}</span>
             <span class="chip add" ?hidden=${!rooms}>${rooms} room${rooms === 1 ? "" : "s"}</span>
             <span class="chip add" ?hidden=${!moves}>${moves} move${moves === 1 ? "" : "s"}</span>
+            <span class="chip add" ?hidden=${!spk}>${spk} speaker${spk === 1 ? "" : "s"}</span>
           </div>
           <div class="applybtns">
             <button class="link" @click=${() => (this._detailsOpen = !this._detailsOpen)}>
@@ -994,6 +1134,14 @@ export class AlexaPanel extends LitElement {
     const roomOps = (this._roomPlan?.ops ?? []).filter((o) => this._roomInclude.has(this._opKey(o)));
     const assigns = (this._assignPlan?.assigns ?? []).filter((a) => this._assignInclude.has(a.id));
     const moves = Object.entries(this._moves);
+    const speakerRooms = this._speakers?.rooms ?? [];
+    const speakers = Object.entries(this._speakerPick).map(([roomId, epId]) => {
+      const room = speakerRooms.find((r) => r.room_id === roomId);
+      return {
+        room: room?.room_name ?? roomId,
+        speaker: room?.candidates.find((c) => c.endpointId === epId)?.name ?? epId,
+      };
+    });
     const roomName = (id: string): string =>
       (this._deviceRooms?.rooms ?? []).find((r) => r.id === id)?.name ?? "(unassigned)";
     const devName = (id: string): string =>
@@ -1005,7 +1153,8 @@ export class AlexaPanel extends LitElement {
       !shNames.length &&
       !roomOps.length &&
       !assigns.length &&
-      !moves.length;
+      !moves.length &&
+      !speakers.length;
     return html`
       <div class="deltadetails">
         ${changed.map(
@@ -1039,6 +1188,11 @@ export class AlexaPanel extends LitElement {
         ${moves.map(
           ([id, to]) => html`<div class="dline">
             <span class="plus">~</span> move · ${devName(id)} → ${to ? roomName(to) : "(unassigned)"}
+          </div>`
+        )}
+        ${speakers.map(
+          (s) => html`<div class="dline">
+            <span class="plus">~</span> speaker · ${s.room} → ${s.speaker}
           </div>`
         )}
         ${empty ? html`<div class="dline muted">No pending changes.</div>` : nothing}
