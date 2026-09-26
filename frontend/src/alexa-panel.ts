@@ -730,6 +730,18 @@ export class AlexaPanel extends LitElement {
     }
     .room .kindgroup .row {
       border-bottom-color: color-mix(in srgb, var(--kind) 18%, transparent);
+      /* In a narrow masonry column, let the dropdown wrap below the name instead of
+         crushing it — the device name keeps a full line, the room picker drops under it. */
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      padding: 8px 2px;
+    }
+    .room .kindgroup .row .info {
+      flex: 1 1 60%;
+    }
+    .room .kindgroup .roomsel {
+      max-width: 100%;
+      margin-left: auto;
     }
     .room .kind-lighting { --kind: #e0a72e; }
     .room .kind-speakers { --kind: #2f6fed; }
