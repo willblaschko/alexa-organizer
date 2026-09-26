@@ -37,12 +37,13 @@ export interface BoardData {
 // ── The one opinionated plan (mirrors the backend `assemble_plan` output) ──────
 
 export interface PlanAction {
-  kind: "expose" | "room_op" | "move" | "preferred" | "remove_device" | "remove_endpoint";
+  kind: "expose" | "room_op" | "move" | "move_to_area" | "preferred" | "remove_device" | "remove_endpoint";
   entity_id?: string;
   to?: boolean | string; // expose → bool; move → target room id
   from?: string | null;
   endpoint_id?: string;
   room_id?: string;
+  area?: string; // move_to_area → HA area name (room created if needed)
   op?: "create" | "rename" | "delete";
   id?: string;
   name?: string;

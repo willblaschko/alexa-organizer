@@ -363,6 +363,17 @@ def test_plan_places_into_canonical_renamed_room():
     assert moves == {"e2": "g2"}  # devA already canonical (no move); devB folds in
 
 
+def test_plan_creates_and_places_for_ha_area_with_no_alexa_room():
+    # Guest Bedroom is an HA area with devices but no Alexa room yet → create-and-place
+    # (one op that makes the room if needed, then puts the device in it).
+    light = _bdev("Guest Bedroom Main Lights", "ha", endpoint_id="e1", room_id=None, area="Guest Bedroom")
+    area_room = {"id": None, "name": "Guest Bedroom", "in_alexa": False, "in_ha": True,
+                 "preferred_id": None, "devices": []}
+    plan = ac.assemble_plan({"rooms": [area_room], "unroomed": [light]}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert ops[0]["action"] == {"kind": "move_to_area", "endpoint_id": "e1", "from": None, "area": "Guest Bedroom"}
+
+
 def test_plan_vacuum_is_pulled_out_of_its_room():
     # A vacuum in a room answers to "turn on <room>" — pull it out (exposed, but not a
     # room member). Move op targets "" (no room = remove from the group).

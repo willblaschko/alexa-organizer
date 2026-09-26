@@ -29,6 +29,7 @@ from .const import (
     SERVICE_FORGET_ENDPOINT,
     SERVICE_MOVE_DEVICE,
     SERVICE_PREVIEW,
+    SERVICE_PLACE_IN_AREA,
     SERVICE_RECONCILE,
     SERVICE_ROOM_OP,
     SERVICE_SET_PREFERRED_SPEAKER,
@@ -47,6 +48,7 @@ _ALL_SERVICES = (
     SERVICE_ASSIGN_PREVIEW,
     SERVICE_FORGET_ENDPOINT,
     SERVICE_SET_PREFERRED_SPEAKER,
+    SERVICE_PLACE_IN_AREA,
 )
 
 
@@ -339,6 +341,27 @@ def _register_services(hass: HomeAssistant) -> None:
         set_preferred_speaker,
         schema=vol.Schema(
             {vol.Required("room_id"): str, vol.Required("endpoint_id"): str}
+        ),
+    )
+
+    async def place_in_area(call: ServiceCall) -> None:
+        from . import alexa_cloud
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        try:
+            await alexa_cloud.async_move_to_area(
+                hass, call.data["endpoint_id"], call.data.get("from"), call.data["area"]
+            )
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            raise HomeAssistantError(str(err)) from err
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PLACE_IN_AREA,
+        place_in_area,
+        schema=vol.Schema(
+            {vol.Required("endpoint_id"): str, vol.Required("area"): str, vol.Optional("from"): str}
         ),
     )
 

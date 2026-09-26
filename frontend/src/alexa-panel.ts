@@ -726,12 +726,17 @@ export class AlexaPanel extends LitElement {
       // 2. Rooms: create / rename (deletes run last).
       for (const op of accepted("room_op").filter((o) => o.action.op !== "delete"))
         await run(op.id, () => svc("room_op", { action: op.action.op, id: op.action.id, name: op.action.name }));
-      // 3. Place devices.
+      // 3. Place devices — into an existing room, or an HA area (creating the room first).
       for (const op of accepted("move")) {
         const data: Record<string, unknown> = { endpoint_id: op.action.endpoint_id };
         if (op.action.from) data.from = op.action.from;
         if (op.action.to) data.to = op.action.to;
         await run(op.id, () => svc("move_device", data));
+      }
+      for (const op of accepted("move_to_area")) {
+        const data: Record<string, unknown> = { endpoint_id: op.action.endpoint_id, area: op.action.area };
+        if (op.action.from) data.from = op.action.from;
+        await run(op.id, () => svc("place_in_area", data));
       }
       // 4. Preferred speakers.
       for (const op of accepted("preferred"))

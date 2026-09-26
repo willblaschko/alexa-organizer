@@ -85,6 +85,25 @@ set_preferred_speaker:
       selector:
         text:
 
+place_in_area:
+  name: Place a device in its Home Assistant area's room (experimental)
+  description: EXPERIMENTAL — put one device into the Alexa room matching a Home Assistant area, creating that room first if it doesn't exist yet (dependencies first). Called per-device by the panel.
+  fields:
+    endpoint_id:
+      name: Endpoint id
+      required: true
+      selector:
+        text:
+    area:
+      name: Home Assistant area name
+      required: true
+      selector:
+        text:
+    from:
+      name: From room id
+      selector:
+        text:
+
 alexa_devices:
   name: Clean up Alexa device registrations (experimental)
   description: EXPERIMENTAL — lists your Amazon device registrations and flags the likely junk (companion-app entries, duplicates). Default is a preview that changes nothing; apply true removes the flagged ones. Protected devices are never touched.

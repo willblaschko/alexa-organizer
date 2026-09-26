@@ -310,6 +310,21 @@ async def async_move_device(
         await _group_member(hass, to_room_id, endpoint_id, "ADD", email)
 
 
+async def async_move_to_area(
+    hass, endpoint_id: str, from_room_id: str | None, area_name: str, email: str | None = None
+) -> str:
+    """Place a device in its HA area's Alexa room, CREATING that room first if it doesn't
+    exist yet (dependencies first: the room must exist before the device can join it). Idempotent
+    — if the room already exists (incl. one created moments ago for a sibling device), it's reused.
+    Returns the room id used."""
+    groups = await async_list_groups(hass, email)
+    target = next((g["id"] for g in groups if _norm(_group_name(g)) == _norm(area_name)), None)
+    if not target:
+        target = await async_create_group(hass, area_name, email)
+    await async_move_device(hass, endpoint_id, from_room_id, target, email)
+    return target
+
+
 async def async_device_rooms(hass, email: str | None = None) -> dict:
     """Rooms + real (kept) devices with each device's CURRENT room. Read-only.
 
@@ -921,12 +936,8 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
     for o in room_ops:
         if o["op"] == "rename":
             area_to_room[_norm(o["to"])] = o["id"]
-    # For devices with no HA area (Echoes, strays), match the name to an HA area's room.
-    ha_area_targets = [
-        {"id": area_to_room[_norm(r["name"])], "name": r["name"]}
-        for r in rooms
-        if r.get("in_ha") and _norm(r["name"]) in area_to_room
-    ]
+    # Every HA area (whether or not it has an Alexa room yet), for matching device names.
+    area_suggest = [{"id": r["name"], "name": r["name"]} for r in rooms if r.get("in_ha")]
 
     g: dict[str, list] = {k: [] for k in _PLAN_GROUP_ORDER}
 
@@ -992,16 +1003,30 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                     "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": ""},
                 })
             continue
+        # Which HA area does this device belong to? HA area for matched devices (the truth);
+        # a name-matched area otherwise (Echoes/strays named after their room).
         if d.get("source") == "ha" and d.get("area"):
-            target = area_to_room.get(_norm(d["area"]))
+            area_name = d["area"]
         else:
-            target = _suggest_room(d.get("name", ""), ha_area_targets)
-        if target and target != d.get("room_id"):
+            area_name = _suggest_room(d.get("name", ""), area_suggest)
+        if not area_name:
+            continue  # can't tell where it goes
+        target = area_to_room.get(_norm(area_name))
+        if target:
+            if target != d.get("room_id"):
+                g["place"].append({
+                    "id": f"move:{eid}", "group": "place",
+                    "title": f"Put {d.get('name')} in its room", "detail": "",
+                    "suggested": True, "destructive": False,
+                    "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": target},
+                })
+        else:
+            # The HA area has no Alexa room yet — create it and place the device in one step.
             g["place"].append({
                 "id": f"move:{eid}", "group": "place",
-                "title": f"Put {d.get('name')} in its room", "detail": "",
+                "title": f"Put {d.get('name')} in {area_name}", "detail": "creates the room",
                 "suggested": True, "destructive": False,
-                "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": target},
+                "action": {"kind": "move_to_area", "endpoint_id": eid, "from": d.get("room_id"), "area": area_name},
             })
 
     # 4. Preferred speaker — the room's main Echo, when unset and unambiguous.
@@ -1037,6 +1062,17 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                 "suggested": bool(d.get("suggested_remove")), "destructive": True,
                 "action": {"kind": "remove_endpoint", "endpoint_id": eid},
             })
+
+    # A create-and-place op already makes the room, so drop any separate "create room" op
+    # for the same area (no duplicate ask).
+    created_areas = {
+        _norm(op["action"]["area"]) for op in g["place"] if op["action"]["kind"] == "move_to_area"
+    }
+    if created_areas:
+        g["rooms"] = [
+            o for o in g["rooms"]
+            if not (o["action"].get("op") == "create" and _norm(o["action"]["name"]) in created_areas)
+        ]
 
     groups = [
         {"key": k, "title": _PLAN_TITLES[k], "destructive": k in _PLAN_DESTRUCTIVE, "ops": g[k]}
