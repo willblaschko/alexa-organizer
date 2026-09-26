@@ -38,6 +38,38 @@ def test_room_sync_delete_only_empty_ghosts_suggested():
     assert by_id["g2"]["suggested"] is False and by_id["g2"]["empty"] is False
 
 
+def test_room_sync_fuzzy_rename_pairs_near_miss_names_opt_in():
+    # "Media" (HA) and "Media Room" (Alexa) are the same room — propose a rename
+    # (group → HA name), opt-in (suggested off), instead of create + delete.
+    ops = ac.plan_room_sync(["Media"], [_group("g1", "Media Room", members=2)])
+    assert ops == [
+        {"op": "rename", "id": "g1", "from": "Media Room", "to": "Media", "suggested": False, "fuzzy": True}
+    ]
+
+
+def test_room_sync_fuzzy_matches_either_direction():
+    # HA name longer than the Alexa group name still pairs (subset either way).
+    ops = ac.plan_room_sync(["Living Room"], [_group("g1", "Living", members=1)])
+    assert ops == [
+        {"op": "rename", "id": "g1", "from": "Living", "to": "Living Room", "suggested": False, "fuzzy": True}
+    ]
+
+
+def test_room_sync_no_fuzzy_on_unrelated_names():
+    ops = ac.plan_room_sync(["Kitchen"], [_group("g1", "Garage", members=0)])
+    kinds = {(o["op"], o.get("name") or o.get("to")) for o in ops}
+    assert ("create", "Kitchen") in kinds
+    assert ("delete", "Garage") in kinds
+    assert not any(o["op"] == "rename" for o in ops)  # no false merge
+
+
+def test_room_sync_exact_match_wins_over_fuzzy():
+    # "Bedroom" exact-matches the group; "Bed" must NOT fuzzy-steal it → "Bed" creates.
+    ops = ac.plan_room_sync(["Bedroom", "Bed"], [_group("g1", "Bedroom", members=1)])
+    assert {"op": "create", "name": "Bed", "suggested": False} in ops
+    assert not any(o["op"] == "rename" for o in ops)
+
+
 # ── _suggest_room ─────────────────────────────────────────────────────────────
 
 def test_suggest_room_exact_and_prefix():
@@ -184,6 +216,127 @@ def test_board_unroomed_endpoint():
     board = ac.build_board([], [_ep("e1", "Stray Plug", "SMARTPLUG")], [])
     assert not board["rooms"]
     assert board["unroomed"][0]["name"] == "Stray Plug"
+
+
+def _sroom(name, devices, preferred_id=None):
+    return {"id": "r", "name": name, "preferred_id": preferred_id, "devices": devices}
+
+
+def _sdev(name, endpoint_id, is_speaker=True):
+    return {"name": name, "endpoint_id": endpoint_id, "is_speaker": is_speaker}
+
+
+def test_preferred_default_single_speaker_wins():
+    room = _sroom("Kitchen", [_sdev("Kitchen Echo", "e1"), _sdev("Kitchen Light", "e2", is_speaker=False)])
+    assert ac._preferred_default(room) == "e1"
+
+
+def test_preferred_default_multiple_prefers_room_name_match():
+    room = _sroom("Office", [_sdev("Sonos Play", "s1"), _sdev("Office Dot", "e2")])
+    assert ac._preferred_default(room) == "e2"
+
+
+def test_preferred_default_multiple_ambiguous_is_none():
+    room = _sroom("Den", [_sdev("Sonos Play", "s1"), _sdev("Living Dot", "e2")])
+    assert ac._preferred_default(room) is None
+
+
+def test_preferred_default_none_when_already_set_or_no_speakers():
+    assert ac._preferred_default(_sroom("Kitchen", [_sdev("Kitchen Echo", "e1")], preferred_id="e1")) is None
+    assert ac._preferred_default(_sroom("Kitchen", [_sdev("Kitchen Light", "e2", is_speaker=False)])) is None
+
+
+# ── assemble_plan (the one opinionated plan) ──────────────────────────────────
+
+
+def _bdev(name, source="ha", endpoint_id=None, room_id=None, area=None,
+          is_speaker=False, suggested_remove=False, protected=False):
+    return {
+        "name": name, "source": source, "endpoint_id": endpoint_id, "entity_id": None,
+        "domain": "light", "exposed": True, "room_id": room_id, "area": area,
+        "is_speaker": is_speaker, "is_preferred": False, "synced": endpoint_id is not None,
+        "protected": protected, "suggested_remove": suggested_remove,
+    }
+
+
+def _broom(rid, name, devices, preferred_id=None):
+    return {"id": rid, "name": name, "in_alexa": rid is not None, "in_ha": True,
+            "preferred_id": preferred_id, "devices": devices}
+
+
+def _invrow(entity_id, name, desired, exposed, area="Kitchen", ghost=False):
+    return {"entity_id": entity_id, "name": name, "domain": "light", "area": area,
+            "desired": desired, "exposed": exposed, "reason": "", "overridden": False, "ghost": ghost}
+
+
+def _groups(plan):
+    return {g["key"]: g for g in plan["groups"]}
+
+
+def test_plan_expose_group_from_inventory_diff():
+    rows = [_invrow("light.new", "New", True, False), _invrow("light.old", "Old", False, True),
+            _invrow("light.ok", "OK", True, True), _invrow("light.dead", "Dead", False, True, ghost=True)]
+    plan = ac.assemble_plan({"rooms": [], "unroomed": []}, rows, [])
+    ops = _groups(plan)["expose"]["ops"]
+    assert {o["action"]["entity_id"]: o["action"]["to"] for o in ops} == {"light.new": True, "light.old": False}
+    assert all(o["suggested"] for o in ops) and plan["in_sync"] is False
+
+
+def test_plan_place_device_into_its_area_room():
+    dev = _bdev("Kitchen Lamp", "ha", endpoint_id="e1", room_id=None, area="Kitchen")
+    plan = ac.assemble_plan({"rooms": [_broom("k", "Kitchen", [])], "unroomed": [dev]}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert ops[0]["action"] == {"kind": "move", "endpoint_id": "e1", "from": None, "to": "k"}
+
+
+def test_plan_no_move_when_already_in_room():
+    dev = _bdev("Kitchen Lamp", "ha", endpoint_id="e1", room_id="k", area="Kitchen")
+    plan = ac.assemble_plan({"rooms": [_broom("k", "Kitchen", [dev])], "unroomed": []}, [], [])
+    assert "place" not in _groups(plan)
+
+
+def test_plan_preferred_speaker_proposed():
+    echo = _bdev("Kitchen Echo", "echo", endpoint_id="e1", room_id="k", is_speaker=True)
+    plan = ac.assemble_plan({"rooms": [_broom("k", "Kitchen", [echo])], "unroomed": []}, [], [])
+    assert _groups(plan)["speakers"]["ops"][0]["action"] == {
+        "kind": "preferred", "room_id": "k", "endpoint_id": "e1"
+    }
+
+
+def test_plan_cleanup_devices_and_endpoints():
+    junk = _bdev("Old Phone", "echo", endpoint_id="e1", suggested_remove=True)
+    dup = _bdev("Dup Light", "alexa", endpoint_id="e2", suggested_remove=True)
+    stray = _bdev("Weird Thing", "alexa", endpoint_id="e3", suggested_remove=False)
+    plan = ac.assemble_plan({"rooms": [], "unroomed": [junk, dup, stray]}, [], [])
+    g = _groups(plan)
+    assert g["cleanup_devices"]["ops"][0]["action"] == {"kind": "remove_device", "endpoint_id": "e1"}
+    assert g["cleanup_devices"]["destructive"] is True
+    eops = {o["action"]["endpoint_id"]: o for o in g["cleanup_endpoints"]["ops"]}
+    assert eops["e2"]["suggested"] is True and eops["e3"]["suggested"] is False
+
+
+def test_plan_rooms_create_rename_and_delete_split():
+    room_ops = [
+        {"op": "create", "name": "Office", "suggested": False},
+        {"op": "rename", "id": "g1", "from": "Media Room", "to": "Media", "suggested": False, "fuzzy": True},
+        {"op": "delete", "id": "g2", "name": "Ghost", "empty": True, "suggested": True},
+    ]
+    plan = ac.assemble_plan({"rooms": [], "unroomed": []}, [], room_ops)
+    g = _groups(plan)
+    assert {o["action"]["op"] for o in g["rooms"]["ops"]} == {"create", "rename"}
+    assert g["rooms_delete"]["ops"][0]["action"] == {"kind": "room_op", "op": "delete", "id": "g2"}
+    assert g["rooms_delete"]["destructive"] is True
+
+
+def test_plan_in_sync_when_nothing_suggested():
+    plan = ac.assemble_plan({"rooms": [], "unroomed": []}, [], [])
+    assert plan["in_sync"] is True and plan["groups"] == []
+
+
+def test_plan_stray_only_is_still_in_sync():
+    stray = _bdev("Weird Thing", "alexa", endpoint_id="e3", suggested_remove=False)
+    plan = ac.assemble_plan({"rooms": [], "unroomed": [stray]}, [], [])
+    assert plan["in_sync"] is True  # opt-in extras don't count as "out of sync"
 
 
 def test_board_matches_via_name_alias():

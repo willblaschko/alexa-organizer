@@ -62,6 +62,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_smarthome_cleanup)
         websocket_api.async_register_command(hass, ws_room_speakers)
         websocket_api.async_register_command(hass, ws_board)
+        websocket_api.async_register_command(hass, ws_plan)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -271,3 +272,16 @@ async def ws_board(hass: HomeAssistant, connection, msg) -> None:
         connection.send_result(msg["id"], {"available": False, "reason": str(err)})
         return
     connection.send_result(msg["id"], {"available": True, **board})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/plan"})
+@websocket_api.async_response
+async def ws_plan(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: the one opinionated plan — board + grouped change list.
+
+    `async_plan` degrades to an exposure-only plan when Alexa is unreachable, so this
+    always returns a usable payload; `available` says whether the Alexa side loaded.
+    """
+    from . import alexa_cloud
+
+    connection.send_result(msg["id"], await alexa_cloud.async_plan(hass))

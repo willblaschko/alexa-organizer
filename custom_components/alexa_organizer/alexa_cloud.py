@@ -195,7 +195,8 @@ def plan_room_sync(area_names: list[str], groups: list[dict]) -> list[dict]:
     groups_by_norm = {norm(_group_name(g)): g for g in groups}
     areas_by_norm = {norm(a): a for a in area_names}
     ops: list[dict] = []
-    matched: set[str] = set()
+    matched: set[str] = set()  # normalized names resolved by an EXACT match
+    create_areas: list[str] = []  # areas with no exact group (candidates for fuzzy/create)
 
     for n, area in areas_by_norm.items():
         g = groups_by_norm.get(n)
@@ -205,10 +206,46 @@ def plan_room_sync(area_names: list[str], groups: list[dict]) -> list[dict]:
             if gname != area:
                 ops.append({"op": "rename", "id": g["id"], "from": gname, "to": area, "suggested": True})
         else:
-            ops.append({"op": "create", "name": area, "suggested": False})
+            create_areas.append(area)
 
-    for n, g in groups_by_norm.items():
-        if n in matched or n in areas_by_norm:
+    # Alexa groups with no exact HA area — candidates for fuzzy pairing or deletion.
+    leftover_groups = {n: g for n, g in groups_by_norm.items() if n not in matched and n not in areas_by_norm}
+
+    # Conservative fuzzy pass: pair a leftover area with a leftover group when one
+    # name's word-set is a subset of the other's (e.g. "Media" ⊂ "Media Room"). These
+    # are almost-certainly the same room, so propose a rename (group → HA name) rather
+    # than create + delete — but opt-in (suggested off), never an automatic merge.
+    def tokens(s: str) -> frozenset[str]:
+        return frozenset(norm(s).split())
+
+    paired_groups: set[str] = set()
+    for area in create_areas[:]:
+        at = tokens(area)
+        best_key = None
+        best_overlap = 0
+        for gn, g in leftover_groups.items():
+            if gn in paired_groups:
+                continue
+            gt = tokens(_group_name(g))
+            if not (at <= gt or gt <= at):  # require a clean subset either direction
+                continue
+            overlap = len(at & gt)
+            if overlap > best_overlap:
+                best_overlap, best_key = overlap, gn
+        if best_key is not None:
+            g = leftover_groups[best_key]
+            paired_groups.add(best_key)
+            create_areas.remove(area)
+            ops.append(
+                {"op": "rename", "id": g["id"], "from": _group_name(g), "to": area,
+                 "suggested": False, "fuzzy": True}
+            )
+
+    for area in create_areas:
+        ops.append({"op": "create", "name": area, "suggested": False})
+
+    for n, g in leftover_groups.items():
+        if n in paired_groups:
             continue
         empty = _group_member_count(g) == 0
         ops.append(
@@ -736,6 +773,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             "protected": False,
             "suggested_remove": False,
             "source": "alexa",
+            "area": None,
         }
         if e["device_type"] is not None:
             fl = acct_flags.get(e["id"], {})
@@ -754,6 +792,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             row["entity_id"] = ha.get("entity_id")
             row["domain"] = ha.get("domain")
             row["exposed"] = ha.get("exposed")
+            row["area"] = ha.get("area")
         elif dup:
             row["suggested_remove"] = True  # confident cruft signal
         return row
@@ -816,6 +855,203 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
     unroomed += unsynced_by_area.get("", [])
     unroomed.sort(key=lambda d: _norm(d["name"]))
     return {"rooms": rooms, "unroomed": unroomed}
+
+
+def _preferred_default(room: dict) -> str | None:
+    """The opinion for a room's preferred speaker, or None (leave alone / can't guess).
+
+    Only proposes when the room has no preferred speaker yet. A single speaker wins
+    outright; with several, the one whose name matches the room (e.g. "Kitchen Echo"
+    in "Kitchen") wins; otherwise it's ambiguous and we don't guess.
+    """
+    if room.get("preferred_id"):
+        return None
+    speakers = [d for d in room.get("devices", []) if d.get("is_speaker") and d.get("endpoint_id")]
+    if not speakers:
+        return None
+    if len(speakers) == 1:
+        return speakers[0]["endpoint_id"]
+    rn = _norm(room.get("name") or "")
+    for d in speakers:
+        dn = _norm(d.get("name") or "")
+        if rn and (dn == rn or dn.startswith(rn + " ") or dn.endswith(" " + rn)):
+            return d["endpoint_id"]
+    return None
+
+
+# The opinion, as one ordered plan. Groups run in this order (matches the proven
+# apply pipeline): expose first, rooms exist before devices land in them, speakers
+# after their room is populated, destructive cleanups + room deletes last.
+_PLAN_GROUP_ORDER = (
+    "expose", "rooms", "place", "speakers", "cleanup_devices", "cleanup_endpoints", "rooms_delete",
+)
+_PLAN_TITLES = {
+    "expose": "Show devices to Alexa",
+    "rooms": "Rooms",
+    "place": "Put devices in their room",
+    "speakers": "Preferred speaker",
+    "cleanup_devices": "Remove unused devices",
+    "cleanup_endpoints": "Remove duplicate or extra devices",
+    "rooms_delete": "Delete empty rooms",
+}
+_PLAN_DESTRUCTIVE = {"cleanup_devices", "cleanup_endpoints", "rooms_delete"}
+
+
+def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
+    """The single opinionated plan: one grouped, ordered, overridable change list.
+
+    PURE. Composes already-fetched data — `build_board` output, `build_inventory`
+    rows, and `plan_room_sync` ops — into groups of ops. Each op carries the
+    EXISTING service to run it (`action.kind`), so the writer path is reused.
+    `suggested` = pre-checked (the app's recommendation); confident cruft only.
+    """
+    rooms = board.get("rooms") or []
+    unroomed = board.get("unroomed") or []
+    all_devices = [d for r in rooms for d in (r.get("devices") or [])] + list(unroomed)
+    rooms_with_id = [{"id": r["id"], "name": r["name"]} for r in rooms if r.get("id")]
+    room_by_area = {_norm(r["name"]): r["id"] for r in rooms if r.get("id")}
+
+    g: dict[str, list] = {k: [] for k in _PLAN_GROUP_ORDER}
+
+    # 1. Expose / hide — live entities whose actual exposure ≠ the policy's desire.
+    for r in rows:
+        if r.get("ghost"):
+            continue  # stale records are cleared by reconcile regardless
+        desired, exposed = bool(r.get("desired")), bool(r.get("exposed"))
+        if desired == exposed:
+            continue
+        eid = r["entity_id"]
+        g["expose"].append({
+            "id": f"expose:{eid}", "group": "expose",
+            "title": f"{'Show' if desired else 'Hide'} {r.get('name')}", "detail": "",
+            "suggested": True, "destructive": False,
+            "action": {"kind": "expose", "entity_id": eid, "to": desired},
+        })
+
+    # 2 & 7. Rooms — create/rename now, delete last.
+    for o in room_ops:
+        if o["op"] == "create":
+            g["rooms"].append({
+                "id": f"room:create:{o['name']}", "group": "rooms",
+                "title": f"Create room {o['name']}", "detail": "",
+                "suggested": o.get("suggested", False), "destructive": False,
+                "action": {"kind": "room_op", "op": "create", "name": o["name"]},
+            })
+        elif o["op"] == "rename":
+            g["rooms"].append({
+                "id": f"room:rename:{o['id']}", "group": "rooms",
+                "title": f"Rename {o['from']} → {o['to']}",
+                "detail": "same room, different name" if o.get("fuzzy") else "",
+                "suggested": o.get("suggested", False), "destructive": False,
+                "action": {"kind": "room_op", "op": "rename", "id": o["id"], "name": o["to"]},
+            })
+        elif o["op"] == "delete":
+            g["rooms_delete"].append({
+                "id": f"room:delete:{o['id']}", "group": "rooms_delete",
+                "title": f"Delete room {o['name']}",
+                "detail": "empty" if o.get("empty") else "still has devices",
+                "suggested": o.get("suggested", False), "destructive": True,
+                "action": {"kind": "room_op", "op": "delete", "id": o["id"]},
+            })
+
+    # 3. Place devices — into their HA area's room (truth), else a name-matched room.
+    for d in all_devices:
+        eid = d.get("endpoint_id")
+        if not eid:
+            continue  # not in Alexa yet — nothing to move
+        if d.get("source") == "ha" and d.get("area"):
+            target = room_by_area.get(_norm(d["area"]))
+        else:
+            target = _suggest_room(d.get("name", ""), rooms_with_id)
+        if target and target != d.get("room_id"):
+            g["place"].append({
+                "id": f"move:{eid}", "group": "place",
+                "title": f"Put {d.get('name')} in its room", "detail": "",
+                "suggested": True, "destructive": False,
+                "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": target},
+            })
+
+    # 4. Preferred speaker — the room's main Echo, when unset and unambiguous.
+    for r in rooms:
+        if not r.get("id"):
+            continue
+        pref = _preferred_default(r)
+        if pref:
+            g["speakers"].append({
+                "id": f"pref:{r['id']}", "group": "speakers",
+                "title": f"Set the main speaker in {r['name']}", "detail": "",
+                "suggested": True, "destructive": False,
+                "action": {"kind": "preferred", "room_id": r["id"], "endpoint_id": pref},
+            })
+
+    # 5 & 6. Cleanup — unused Amazon devices; duplicate/stray smart-home endpoints.
+    for d in all_devices:
+        eid = d.get("endpoint_id")
+        if not eid or d.get("protected"):
+            continue
+        if d.get("source") == "echo" and d.get("suggested_remove"):
+            g["cleanup_devices"].append({
+                "id": f"rmdev:{eid}", "group": "cleanup_devices",
+                "title": f"Remove {d.get('name')}", "detail": "unused device",
+                "suggested": True, "destructive": True,
+                "action": {"kind": "remove_device", "endpoint_id": eid},
+            })
+        elif d.get("source") == "alexa":
+            g["cleanup_endpoints"].append({
+                "id": f"rmep:{eid}", "group": "cleanup_endpoints",
+                "title": f"Remove {d.get('name')}",
+                "detail": "duplicate" if d.get("suggested_remove") else "not in Home Assistant",
+                "suggested": bool(d.get("suggested_remove")), "destructive": True,
+                "action": {"kind": "remove_endpoint", "endpoint_id": eid},
+            })
+
+    groups = [
+        {"key": k, "title": _PLAN_TITLES[k], "destructive": k in _PLAN_DESTRUCTIVE, "ops": g[k]}
+        for k in _PLAN_GROUP_ORDER
+        if g[k]
+    ]
+    all_ops = [o for k in _PLAN_GROUP_ORDER for o in g[k]]
+    counts = {grp["key"]: sum(1 for o in grp["ops"] if o["suggested"]) for grp in groups}
+    return {
+        "in_sync": not any(o["suggested"] for o in all_ops),
+        "counts": counts,
+        "groups": groups,
+    }
+
+
+async def async_plan(hass, email: str | None = None) -> dict:
+    """The whole opinion, computed once: the board + the grouped change list.
+
+    Fetches groups + endpoints + inventory a single time, then composes them via the
+    PURE `build_board` + `assemble_plan`. Degrades gracefully — if Alexa is unreachable
+    the exposure-only plan (from HA) still returns, `available` marks the difference.
+    """
+    from . import inventory
+    from .exposure import ExposureUnavailable
+
+    rows: list[dict] = []
+    try:
+        for r in inventory.build_inventory(hass)["rows"]:
+            names = [r.get("name")]
+            state = hass.states.get(r["entity_id"])
+            if state and state.attributes.get("friendly_name"):
+                names.append(state.attributes["friendly_name"])
+            rows.append({**r, "names": names})
+    except ExposureUnavailable:
+        rows = []
+
+    try:
+        groups = await async_list_groups(hass, email)
+        node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+        endpoints = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+        alexa_ok = True
+    except AlexaCloudUnavailable:
+        groups, endpoints, alexa_ok = [], [], False
+
+    board = build_board(rows, endpoints, groups)
+    room_ops = plan_room_sync(ha_area_names(hass), groups) if alexa_ok else []
+    plan = assemble_plan(board, rows, room_ops)
+    return {"available": alexa_ok, "board": board, **plan}
 
 
 _REMOVE = (
