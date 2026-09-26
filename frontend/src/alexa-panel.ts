@@ -1,5 +1,11 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import {
+  layoutBoard,
+  type BoardData,
+  type BoardDevice,
+  type BoardRoom,
+} from "./board-layout.js";
 
 // Minimal shape of the objects HA hands a custom panel.
 interface HomeAssistant {
@@ -102,38 +108,6 @@ interface RoomSpeakers {
   rooms?: RoomSpeaker[];
 }
 
-// The aggregated board: one source-tagged model of rooms and the devices in them.
-interface BoardDevice {
-  name: string;
-  source: "ha" | "alexa" | "echo";
-  endpoint_id: string | null;
-  entity_id: string | null;
-  domain: string | null;
-  exposed: boolean | null;
-  room_id: string | null;
-  area?: string | null;
-  is_speaker: boolean;
-  is_preferred: boolean;
-  synced: boolean;
-  protected: boolean;
-  suggested_remove: boolean;
-}
-
-interface BoardRoom {
-  id: string | null;
-  name: string;
-  in_alexa: boolean;
-  in_ha: boolean;
-  preferred_id: string | null;
-  devices: BoardDevice[];
-}
-
-interface BoardData {
-  available: boolean;
-  reason?: string;
-  rooms?: BoardRoom[];
-  unroomed?: BoardDevice[];
-}
 
 interface Row {
   entity_id: string;
@@ -677,9 +651,13 @@ export class AlexaPanel extends LitElement {
     const rooms = (b.rooms ?? [])
       .filter((r) => r.id)
       .map((r) => ({ id: r.id as string, name: r.name }));
+    // Render the FUTURE state: project staged moves onto the layout so a device shows
+    // under its target room's card (pending), like Chorus's working layout. `_board`
+    // stays pristine so the apply path resolves each move's original `from` room.
+    const laid = layoutBoard(b.rooms ?? [], b.unroomed ?? [], this._moves);
     return html`
-      ${(b.rooms ?? []).map((room) => this._boardRoomCard(room, rooms))}
-      ${(b.unroomed ?? []).length ? this._boardUnroomed(b.unroomed ?? [], rooms) : nothing}
+      ${laid.rooms.map((room) => this._boardRoomCard(room, rooms))}
+      ${laid.unroomed.length ? this._boardUnroomed(laid.unroomed, rooms) : nothing}
     `;
   }
 

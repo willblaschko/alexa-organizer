@@ -81,9 +81,9 @@ function e(e,t,s,i){var o,a=arguments.length,r=a<3?t:null===i?i=Object.getOwnPro
           switch to Classic for the full toolset once a session is available.
         </div>
         ${this._rooms().map(e=>this._exposureCard(e))}
-      `;if(!e)return j`<p class="muted">Loading Alexa board…</p>`;const t=(e.rooms??[]).filter(e=>e.id).map(e=>({id:e.id,name:e.name}));return j`
-      ${(e.rooms??[]).map(e=>this._boardRoomCard(e,t))}
-      ${(e.unroomed??[]).length?this._boardUnroomed(e.unroomed??[],t):W}
+      `;if(!e)return j`<p class="muted">Loading Alexa board…</p>`;const t=(e.rooms??[]).filter(e=>e.id).map(e=>({id:e.id,name:e.name})),s=function(e,t,s){const i=e=>!!e.endpoint_id&&e.endpoint_id in s,o=e=>s[e.endpoint_id],a=[...e.flatMap(e=>e.devices),...t].filter(i),r=e.map(e=>{const t=e.devices.filter(t=>!i(t)||o(t)===e.id),s=a.filter(t=>o(t)===e.id&&!e.devices.includes(t));return{...e,devices:[...t,...s]}}),n=[...t.filter(e=>!i(e)||""===o(e)),...a.filter(e=>""===o(e)&&!t.includes(e))];return{rooms:r,unroomed:n}}(e.rooms??[],e.unroomed??[],this._moves);return j`
+      ${s.rooms.map(e=>this._boardRoomCard(e,t))}
+      ${s.unroomed.length?this._boardUnroomed(s.unroomed,t):W}
     `}_boardRoomCard(e,t){const s=e.in_ha&&e.in_alexa?j`<span class="chip ok">HA · Alexa</span>`:e.in_ha?j`<span class="chip warn">HA area · not in Alexa</span>`:j`<span class="chip warn">Alexa room · no HA area</span>`;return j`
       <section class="room card">
         <h2 class="rhead">
