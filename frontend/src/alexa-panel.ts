@@ -633,48 +633,86 @@ export class AlexaPanel extends LitElement {
 
   // The plan's groups with the user's manual room moves layered in: a touched device's
   // suggested place op is replaced by (or created as) a move to the chosen room.
+  private _norm(s: string): string {
+    return (s || "").trim().toLowerCase();
+  }
+
+  // Does an Alexa room already exist for this HA area name?
+  private _areaHasRoom(area: string): boolean {
+    return (this._plan?.board.rooms ?? []).some((r) => !!r.id && this._norm(r.name) === this._norm(area));
+  }
+
   private _effectiveGroups(): PlanGroup[] {
     const groups = this._plan?.groups ?? [];
     const touched = Object.keys(this._userMove);
     if (touched.length === 0) return groups;
     const cur = this._endpointCurrentRoom();
     const synth: PlanOp[] = [];
-    for (const [eid, to] of Object.entries(this._userMove)) {
+    const extraCreates: PlanOp[] = [];
+    for (const [eid, value] of Object.entries(this._userMove)) {
       const current = cur.get(eid) ?? "";
-      if (to === current) continue; // reverted / no change
-      synth.push({
-        id: `move:${eid}`, group: "place", title: `Move ${this._deviceName(eid)}`, detail: "",
-        suggested: true, destructive: false,
-        action: { kind: "move", endpoint_id: eid, from: current || null, to },
-      });
+      if (value === current) continue; // reverted / no change
+      if (value.startsWith("#area#")) {
+        // Move into an HA area: place there, creating the room first if Alexa lacks it.
+        const area = value.slice(6);
+        synth.push({
+          id: `move:${eid}`, group: "place", title: `Put ${this._deviceName(eid)} in ${area}`,
+          detail: this._areaHasRoom(area) ? "" : "creates the room",
+          suggested: true, destructive: false,
+          action: { kind: "move", endpoint_id: eid, from: current || null, to: "", area },
+        });
+        if (!this._areaHasRoom(area) && !extraCreates.some((o) => o.id === `room:create:${area}`)) {
+          extraCreates.push({
+            id: `room:create:${area}`, group: "rooms", title: `Create room ${area}`, detail: "for its devices",
+            suggested: true, destructive: false,
+            action: { kind: "room_op", op: "create", name: area },
+          });
+        }
+      } else {
+        synth.push({
+          id: `move:${eid}`, group: "place", title: `Move ${this._deviceName(eid)}`, detail: "",
+          suggested: true, destructive: false,
+          action: { kind: "move", endpoint_id: eid, from: current || null, to: value },
+        });
+      }
     }
     const touchedSet = new Set(touched);
     const drop = (o: PlanOp) => o.action.kind === "move" && !!o.action.endpoint_id && touchedSet.has(o.action.endpoint_id);
+    const haveCreate = new Set(groups.flatMap((g) => g.ops).map((o) => o.id));
+    const newCreates = extraCreates.filter((o) => !haveCreate.has(o.id));
     let sawPlace = false;
     const out = groups.map((g) => {
+      if (g.key === "rooms") return { ...g, ops: [...g.ops, ...newCreates] };
       if (g.key !== "place") return g;
       sawPlace = true;
       return { ...g, ops: [...g.ops.filter((o) => !drop(o)), ...synth] };
     });
-    if (!sawPlace && synth.length) {
+    if (!groups.some((g) => g.key === "rooms") && newCreates.length)
+      out.unshift({ key: "rooms", title: "Rooms", destructive: false, ops: newCreates });
+    if (!sawPlace && synth.length)
       out.push({ key: "place", title: "Put devices in their room", destructive: false, ops: synth });
-    }
     return out;
   }
 
-  private _homeRooms(): Array<{ id: string; name: string }> {
+  // Dropdown targets: every HA area (the source of truth, even without an Alexa room yet)
+  // plus any Alexa-only rooms. HA areas that lack an Alexa room carry a "#area#" sentinel.
+  private _homeRooms(): Array<{ value: string; name: string }> {
     return (this._plan?.board.rooms ?? [])
-      .filter((r) => r.id)
-      .map((r) => ({ id: r.id as string, name: r.name }));
+      .filter((r) => r.id || r.in_ha)
+      .map((r) => ({ value: (r.id as string) || `#area#${r.name}`, name: r.name }));
   }
 
   private _onHomeMove(endpointId: string, value: string): void {
     const current = this._endpointCurrentRoom().get(endpointId) ?? "";
     this._userMove = { ...this._userMove, [endpointId]: value };
     const acc = new Set(this._accepted);
-    const id = `move:${endpointId}`;
-    if (value === current) acc.delete(id);
-    else acc.add(id);
+    const moveId = `move:${endpointId}`;
+    if (value === current) acc.delete(moveId);
+    else acc.add(moveId);
+    if (value.startsWith("#area#")) {
+      const area = value.slice(6);
+      if (!this._areaHasRoom(area)) acc.add(`room:create:${area}`);
+    }
     this._accepted = acc;
   }
 
@@ -948,8 +986,9 @@ export class AlexaPanel extends LitElement {
           ? "Echo"
           : "Alexa-only";
     const preferred = !!(room.preferred_id && d.endpoint_id === room.preferred_id);
-    // The device is rendered under its EFFECTIVE room, so the dropdown reflects that.
-    const selected = room.id ?? "";
+    // The device is rendered under its EFFECTIVE room, so the dropdown reflects that —
+    // an HA-area room with no Alexa id yet uses its "#area#" sentinel value.
+    const selected = room.id ?? (room.in_ha ? `#area#${room.name}` : "");
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
@@ -971,7 +1010,7 @@ export class AlexaPanel extends LitElement {
             >
               <option value="" ?selected=${selected === ""}>(no room)</option>
               ${this._homeRooms().map(
-                (r) => html`<option value=${r.id} ?selected=${selected === r.id}>${r.name}</option>`
+                (r) => html`<option value=${r.value} ?selected=${selected === r.value}>${r.name}</option>`
               )}
             </select>`
           : nothing}

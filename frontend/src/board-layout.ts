@@ -25,6 +25,7 @@ export interface BoardRoom {
   in_ha: boolean;
   preferred_id: string | null;
   devices: BoardDevice[];
+  _creating?: boolean; // projected: this room will be created by an accepted op
 }
 
 export interface BoardData {
@@ -85,27 +86,59 @@ export function projectBoard(
   groups: PlanGroup[],
   accepted: Set<string>
 ): { rooms: BoardRoom[]; unroomed: BoardDevice[] } {
-  const moves: Record<string, string> = {};
+  const norm = (s: string) => (s || "").trim().toLowerCase();
+  const idMoves: Record<string, string> = {}; // endpoint → existing room id ("" = no room)
+  const areaMoves: Record<string, string> = {}; // endpoint → HA area (norm) to place/create into
   const removing = new Set<string>();
   const exposeTo = new Map<string, boolean>();
+  const willCreate = new Set<string>(); // norm area names an accepted op will create
   for (const g of groups) {
     for (const o of g.ops) {
       if (!accepted.has(o.id)) continue;
       const a = o.action;
-      if (a.kind === "move" && a.endpoint_id) moves[a.endpoint_id] = (a.to as string) ?? "";
-      else if ((a.kind === "remove_device" || a.kind === "remove_endpoint") && a.endpoint_id)
+      if ((a.kind === "move" || a.kind === "move_to_area") && a.endpoint_id) {
+        if (a.kind === "move" && a.to) idMoves[a.endpoint_id] = a.to as string;
+        else if (a.area) areaMoves[a.endpoint_id] = norm(a.area);
+        else idMoves[a.endpoint_id] = ""; // to no room (e.g. a vacuum pulled out)
+      } else if ((a.kind === "remove_device" || a.kind === "remove_endpoint") && a.endpoint_id) {
         removing.add(a.endpoint_id);
-      else if (a.kind === "expose" && a.entity_id) exposeTo.set(a.entity_id, a.to as boolean);
+      } else if (a.kind === "expose" && a.entity_id) {
+        exposeTo.set(a.entity_id, a.to as boolean);
+      } else if (a.kind === "room_op" && a.op === "create" && a.name) {
+        willCreate.add(norm(a.name));
+      }
     }
   }
-  const laid = layoutBoard(board.rooms ?? [], board.unroomed ?? [], moves);
+  // First relocate the plain id-moves; then move the area-moves to the room whose NAME
+  // matches the area (works even for an HA-area room that has no Alexa id yet).
+  const laid = layoutBoard(board.rooms ?? [], board.unroomed ?? [], idMoves);
+  const roomByName = new Map(laid.rooms.map((r) => [norm(r.name), r]));
+  const pull = (eid: string): BoardDevice | undefined => {
+    for (const r of laid.rooms) {
+      const i = r.devices.findIndex((d) => d.endpoint_id === eid);
+      if (i >= 0) return r.devices.splice(i, 1)[0];
+    }
+    const j = laid.unroomed.findIndex((d) => d.endpoint_id === eid);
+    return j >= 0 ? laid.unroomed.splice(j, 1)[0] : undefined;
+  };
+  for (const [eid, an] of Object.entries(areaMoves)) {
+    const dev = pull(eid);
+    if (!dev) continue;
+    const room = roomByName.get(an);
+    if (room) room.devices.push(dev);
+    else laid.unroomed.push(dev);
+  }
   const annotate = (d: BoardDevice): BoardDevice => ({
     ...d,
     _removing: d.endpoint_id ? removing.has(d.endpoint_id) : false,
     exposed: d.entity_id && exposeTo.has(d.entity_id) ? exposeTo.get(d.entity_id)! : d.exposed,
   });
   return {
-    rooms: laid.rooms.map((r) => ({ ...r, devices: r.devices.map(annotate) })),
+    rooms: laid.rooms.map((r) => ({
+      ...r,
+      _creating: r._creating || willCreate.has(norm(r.name)),
+      devices: r.devices.map(annotate),
+    })),
     unroomed: laid.unroomed.map(annotate),
   };
 }

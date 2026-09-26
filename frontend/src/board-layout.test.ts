@@ -116,6 +116,25 @@ test("projectBoard marks a device _removing for an accepted remove op, and does 
   assert.equal(find(projectBoard(b, groups, new Set()), "junk")._removing, false);
 });
 
+test("projectBoard relocates a create-and-place (area) move to the matching HA-area room", () => {
+  const b = board(
+    [
+      room("k", "Kitchen", []),
+      { id: null, name: "Guest Bedroom", in_alexa: false, in_ha: true, preferred_id: null, devices: [] },
+    ],
+    [dev("gbLight", { endpoint_id: "e1" })]
+  );
+  const groups: PlanGroup[] = [
+    { key: "rooms", title: "", destructive: false, ops: [op("room:create:Guest Bedroom", { kind: "room_op", op: "create", name: "Guest Bedroom" })] },
+    { key: "place", title: "", destructive: false, ops: [op("move:e1", { kind: "move", endpoint_id: "e1", to: "", area: "Guest Bedroom" })] },
+  ];
+  const out = projectBoard(b, groups, new Set(["room:create:Guest Bedroom", "move:e1"]));
+  const gb = out.rooms.find((r) => r.name === "Guest Bedroom")!;
+  assert.deepEqual(gb.devices.map((d) => d.name), ["gbLight"]);
+  assert.equal(gb._creating, true);
+  assert.deepEqual(out.unroomed.map((d) => d.name), []);
+});
+
 test("projectBoard reflects an accepted expose op on the matching HA device", () => {
   const b = board([room("k", "Kitchen", [dev("lamp", { endpoint_id: "e1", entity_id: "light.k", exposed: false })])]);
   const groups: PlanGroup[] = [
