@@ -364,15 +364,15 @@ export class AlexaPanel extends LitElement {
 
         ${this._rooms().map(
           (room) => html`
-            <section class="room">
-              <h2>
+            <section class="room card">
+              <h2 class="rhead">
                 ${room.area}
                 <span class="count">${room.groups.reduce((n, g) => n + g.rows.length, 0)}</span>
               </h2>
               ${room.groups.map(
                 (g) => html`
-                  <div class="kindgroup">
-                    <h3>${g.label}</h3>
+                  <div class="kindgroup group kind-${g.label.toLowerCase().split(" ")[0]}">
+                    <h3 class="gcap">${g.label}</h3>
                     <div class="rows">${g.rows.map((r) => this._row(r))}</div>
                   </div>
                 `
@@ -1199,8 +1199,14 @@ export class AlexaPanel extends LitElement {
     section {
       margin-bottom: 20px;
     }
-    section.room {
+    /* A room is a Chorus-style card; its kind-groups are tinted nested boxes. */
+    section.room.card {
       margin-bottom: 26px;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 12px;
+      padding: 12px 14px 14px;
+      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
     }
     h2 {
       display: flex;
@@ -1210,6 +1216,11 @@ export class AlexaPanel extends LitElement {
       font-weight: 600;
       color: var(--primary-text-color, #212121);
       margin: 4px 4px 6px;
+    }
+    .room .rhead {
+      margin: 2px 2px 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--divider-color, #ececec);
     }
     h3 {
       font-size: 0.72rem;
@@ -1226,12 +1237,44 @@ export class AlexaPanel extends LitElement {
       font-weight: 400;
       opacity: 0.7;
     }
+    /* Standalone card list (used by the cleanup / device sections). */
     .rows {
       background: var(--card-background-color, #fff);
       border-radius: 12px;
       overflow: hidden;
       box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
     }
+    /* Inside a room card: each kind is a tinted box with an accent rail. */
+    .room .kindgroup {
+      --kind: var(--secondary-text-color, #6b7280);
+      border: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
+      border-left: 3px solid var(--kind);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--kind) 7%, var(--card-background-color, #fff));
+      padding: 4px 10px 8px;
+      margin-top: 10px;
+    }
+    .room .kindgroup:first-of-type {
+      margin-top: 0;
+    }
+    .room .kindgroup .gcap {
+      color: var(--kind);
+      margin: 8px 2px 6px;
+    }
+    .room .kindgroup .rows {
+      background: transparent;
+      border-radius: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+    .room .kindgroup .row {
+      border-bottom-color: color-mix(in srgb, var(--kind) 18%, transparent);
+    }
+    .room .kind-lighting { --kind: #e0a72e; }
+    .room .kind-speakers { --kind: #2f6fed; }
+    .room .kind-climate  { --kind: #129d9d; }
+    .room .kind-scenes   { --kind: #6a4bd8; }
+    .room .kind-other    { --kind: #6b7280; }
     .row {
       display: flex;
       align-items: center;
