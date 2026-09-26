@@ -363,6 +363,14 @@ export class AlexaPanel extends LitElement {
           `
         )}
         ${this._ghosts.length ? this._ghostSection() : nothing}
+        <div class="exp-divider">
+          <h2 class="exp-heading">Alexa cleanup &amp; sync <span class="exp">experimental</span></h2>
+          <p class="muted">
+            Reach into Alexa's own rooms and device list to match Home Assistant — rename and
+            clean up rooms, snap devices into them, and clear stale registrations. Needs Alexa
+            Media Player or the core Alexa Devices integration logged in.
+          </p>
+        </div>
         ${this._roomSection()}
         ${this._assignSection()}
         ${this._deviceRoomsSection()}
@@ -1186,9 +1194,20 @@ export class AlexaPanel extends LitElement {
       margin: 0 4px 8px;
     }
     .alexa-exp {
-      margin-top: 30px;
-      border-top: 1px dashed var(--divider-color, #ccc);
-      padding-top: 16px;
+      margin-top: 22px;
+    }
+    .exp-divider {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 2px solid var(--divider-color, #ddd);
+    }
+    .exp-heading {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin: 0 4px 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     .exp {
       font-size: 0.58rem;
