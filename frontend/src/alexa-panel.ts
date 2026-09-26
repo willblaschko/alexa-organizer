@@ -8,6 +8,7 @@ import {
   type BoardRoom,
   type Plan,
   type PlanGroup,
+  type PlanOp,
 } from "./board-layout.js";
 
 // Minimal shape of the objects HA hands a custom panel.
@@ -213,6 +214,7 @@ export class AlexaPanel extends LitElement {
   @state() private _reviewOpen = false;
   @state() private _opStatus: Record<string, string> = {}; // op id -> pending/running/done/error
   @state() private _applying = false;
+  @state() private _userMove: Record<string, string> = {}; // endpoint id -> room id ("" = no room)
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -592,6 +594,7 @@ export class AlexaPanel extends LitElement {
         (p.groups ?? []).flatMap((g) => g.ops).filter((o) => o.suggested).map((o) => o.id)
       );
       this._opStatus = {};
+      this._userMove = {};
     } finally {
       this._planBusy = false;
     }
@@ -604,7 +607,73 @@ export class AlexaPanel extends LitElement {
   }
 
   private get _acceptedCount(): number {
-    return this._accepted.size;
+    const ids = new Set(this._effectiveGroups().flatMap((g) => g.ops).map((o) => o.id));
+    let n = 0;
+    for (const id of this._accepted) if (ids.has(id)) n++;
+    return n;
+  }
+
+  // endpoint id -> its CURRENT room id ("" = no room), from the pristine plan board.
+  private _endpointCurrentRoom(): Map<string, string> {
+    const m = new Map<string, string>();
+    const b = this._plan?.board;
+    for (const r of b?.rooms ?? []) for (const d of r.devices) if (d.endpoint_id) m.set(d.endpoint_id, r.id ?? "");
+    for (const d of b?.unroomed ?? []) if (d.endpoint_id) m.set(d.endpoint_id, "");
+    return m;
+  }
+
+  private _deviceName(endpointId: string): string {
+    const b = this._plan?.board;
+    for (const d of [...(b?.rooms ?? []).flatMap((r) => r.devices), ...(b?.unroomed ?? [])])
+      if (d.endpoint_id === endpointId) return d.name;
+    return endpointId;
+  }
+
+  // The plan's groups with the user's manual room moves layered in: a touched device's
+  // suggested place op is replaced by (or created as) a move to the chosen room.
+  private _effectiveGroups(): PlanGroup[] {
+    const groups = this._plan?.groups ?? [];
+    const touched = Object.keys(this._userMove);
+    if (touched.length === 0) return groups;
+    const cur = this._endpointCurrentRoom();
+    const synth: PlanOp[] = [];
+    for (const [eid, to] of Object.entries(this._userMove)) {
+      const current = cur.get(eid) ?? "";
+      if (to === current) continue; // reverted / no change
+      synth.push({
+        id: `move:${eid}`, group: "place", title: `Move ${this._deviceName(eid)}`, detail: "",
+        suggested: true, destructive: false,
+        action: { kind: "move", endpoint_id: eid, from: current || null, to },
+      });
+    }
+    const touchedSet = new Set(touched);
+    const drop = (o: PlanOp) => o.action.kind === "move" && !!o.action.endpoint_id && touchedSet.has(o.action.endpoint_id);
+    let sawPlace = false;
+    const out = groups.map((g) => {
+      if (g.key !== "place") return g;
+      sawPlace = true;
+      return { ...g, ops: [...g.ops.filter((o) => !drop(o)), ...synth] };
+    });
+    if (!sawPlace && synth.length) {
+      out.push({ key: "place", title: "Put devices in their room", destructive: false, ops: synth });
+    }
+    return out;
+  }
+
+  private _homeRooms(): Array<{ id: string; name: string }> {
+    return (this._plan?.board.rooms ?? [])
+      .filter((r) => r.id)
+      .map((r) => ({ id: r.id as string, name: r.name }));
+  }
+
+  private _onHomeMove(endpointId: string, value: string): void {
+    const current = this._endpointCurrentRoom().get(endpointId) ?? "";
+    this._userMove = { ...this._userMove, [endpointId]: value };
+    const acc = new Set(this._accepted);
+    const id = `move:${endpointId}`;
+    if (value === current) acc.delete(id);
+    else acc.add(id);
+    this._accepted = acc;
   }
 
   private _planEndpointCount(): number {
@@ -620,7 +689,7 @@ export class AlexaPanel extends LitElement {
     if (this._applying || !this._plan) return;
     this._applying = true;
     try {
-      const groups = this._plan.groups ?? [];
+      const groups = this._effectiveGroups();
       const flat = groups.flatMap((g) => g.ops);
       const accepted = (kind: string) =>
         flat.filter((o) => this._accepted.has(o.id) && o.action.kind === kind);
@@ -736,7 +805,6 @@ export class AlexaPanel extends LitElement {
   }
 
   private _reviewSheet(): TemplateResult {
-    const p = this._plan!;
     const n = this._acceptedCount;
     return html`
       <div class="reviewsheet">
@@ -744,7 +812,7 @@ export class AlexaPanel extends LitElement {
           <h2>Review changes</h2>
           <button class="link" ?disabled=${this._applying} @click=${() => (this._reviewOpen = false)}>Close</button>
         </div>
-        ${(p.groups ?? []).map((g) => this._reviewGroup(g))}
+        ${this._effectiveGroups().map((g) => this._reviewGroup(g))}
         <div class="reviewfoot">
           <button class="apply" ?disabled=${this._applying || n === 0} @click=${this._applyPlan}>
             ${this._applying ? "Syncing…" : `Sync ${n} change${n === 1 ? "" : "s"}`}
@@ -779,7 +847,7 @@ export class AlexaPanel extends LitElement {
 
   private _planBoard(): TemplateResult {
     const p = this._plan!;
-    const laid = projectBoard(p.board, p.groups ?? [], this._accepted);
+    const laid = projectBoard(p.board, this._effectiveGroups(), this._accepted);
     return html`
       ${laid.rooms.map((r) => this._previewRoom(r))}
       ${laid.unroomed.length
@@ -815,6 +883,8 @@ export class AlexaPanel extends LitElement {
           ? "Echo"
           : "Alexa-only";
     const preferred = !!(room.preferred_id && d.endpoint_id === room.preferred_id);
+    // The device is rendered under its EFFECTIVE room, so the dropdown reflects that.
+    const selected = room.id ?? "";
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
@@ -828,6 +898,18 @@ export class AlexaPanel extends LitElement {
             ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
           </div>
         </div>
+        ${d.endpoint_id && !d._removing
+          ? html`<select
+              class="roomsel"
+              ?disabled=${this._applying}
+              @change=${(e: Event) => this._onHomeMove(d.endpoint_id as string, (e.target as HTMLSelectElement).value)}
+            >
+              <option value="" ?selected=${selected === ""}>(no room)</option>
+              ${this._homeRooms().map(
+                (r) => html`<option value=${r.id} ?selected=${selected === r.id}>${r.name}</option>`
+              )}
+            </select>`
+          : nothing}
       </div>
     `;
   }
