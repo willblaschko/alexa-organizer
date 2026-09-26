@@ -897,6 +897,9 @@ _PLAN_TITLES = {
     "rooms_delete": "Delete empty rooms",
 }
 _PLAN_DESTRUCTIVE = {"cleanup_devices", "cleanup_endpoints", "rooms_delete"}
+# Domains that stay EXPOSED (voice control by name) but are never room members — Alexa's
+# "turn on <room>" would otherwise sweep them. A vacuum is the clear case.
+_NO_ROOM_DOMAINS = frozenset({"vacuum"})
 
 
 def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
@@ -977,6 +980,18 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
         eid = d.get("endpoint_id")
         if not eid:
             continue  # not in Alexa yet — nothing to move
+        # Action devices (vacuums …) stay exposed for direct voice control but must NOT be
+        # room members, or "turn on <room>" starts them. Pull them out of any room.
+        if d.get("domain") in _NO_ROOM_DOMAINS:
+            if d.get("room_id"):
+                g["place"].append({
+                    "id": f"move:{eid}", "group": "place",
+                    "title": f"Keep {d.get('name')} out of rooms",
+                    "detail": "so “turn on the room” won't start it",
+                    "suggested": True, "destructive": False,
+                    "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": ""},
+                })
+            continue
         if d.get("source") == "ha" and d.get("area"):
             target = area_to_room.get(_norm(d["area"]))
         else:

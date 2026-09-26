@@ -363,6 +363,27 @@ def test_plan_places_into_canonical_renamed_room():
     assert moves == {"e2": "g2"}  # devA already canonical (no move); devB folds in
 
 
+def test_plan_vacuum_is_pulled_out_of_its_room():
+    # A vacuum in a room answers to "turn on <room>" — pull it out (exposed, but not a
+    # room member). Move op targets "" (no room = remove from the group).
+    vac = _bdev("Downstairs Vacuum", "ha", endpoint_id="v1", room_id="mr", area="Media Room")
+    vac["domain"] = "vacuum"
+    plan = ac.assemble_plan({"rooms": [_broom("mr", "Media Room", [vac])], "unroomed": []}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert ops == [{
+        "id": "move:v1", "group": "place", "title": ops[0]["title"], "detail": ops[0]["detail"],
+        "suggested": True, "destructive": False,
+        "action": {"kind": "move", "endpoint_id": "v1", "from": "mr", "to": ""},
+    }]
+
+
+def test_plan_vacuum_with_no_room_is_left_alone():
+    vac = _bdev("Robot", "ha", endpoint_id="v1", room_id=None, area="Media Room")
+    vac["domain"] = "vacuum"
+    plan = ac.assemble_plan({"rooms": [_broom("mr", "Media Room", [])], "unroomed": [vac]}, [], [])
+    assert "place" not in _groups(plan)
+
+
 def test_plan_in_sync_when_nothing_suggested():
     plan = ac.assemble_plan({"rooms": [], "unroomed": []}, [], [])
     assert plan["in_sync"] is True and plan["groups"] == []
