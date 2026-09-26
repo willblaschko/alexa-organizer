@@ -61,6 +61,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_assign_plan)
         websocket_api.async_register_command(hass, ws_smarthome_cleanup)
         websocket_api.async_register_command(hass, ws_room_speakers)
+        websocket_api.async_register_command(hass, ws_board)
         ui["ws"] = True
 
     frontend.async_register_built_in_panel(
@@ -256,3 +257,17 @@ async def ws_room_speakers(hass: HomeAssistant, connection, msg) -> None:
         connection.send_result(msg["id"], {"available": False, "reason": str(err)})
         return
     connection.send_result(msg["id"], {"available": True, "rooms": rooms})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/board"})
+@websocket_api.async_response
+async def ws_board(hass: HomeAssistant, connection, msg) -> None:
+    """Read-only: the whole aggregated board — rooms and source-tagged devices."""
+    from . import alexa_cloud
+
+    try:
+        board = await alexa_cloud.async_board(hass)
+    except alexa_cloud.AlexaCloudUnavailable as err:
+        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
+        return
+    connection.send_result(msg["id"], {"available": True, **board})

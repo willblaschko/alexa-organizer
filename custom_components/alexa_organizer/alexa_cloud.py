@@ -311,6 +311,34 @@ async def async_device_rooms(hass, email: str | None = None) -> dict:
     return {"rooms": rooms, "devices": devices}
 
 
+async def async_board(hass, email: str | None = None) -> dict:
+    """The whole panel as ONE model: rooms (HA areas ∪ Alexa groups) and the devices in
+    them, each tagged with its source (ha / alexa / echo). Read-only.
+
+    Degrades gracefully — if HA exposure can't be read, the Alexa side still returns
+    (devices just won't carry HA matches).
+    """
+    from . import inventory
+    from .exposure import ExposureUnavailable
+
+    groups = await async_list_groups(hass, email)
+    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+    endpoints = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+
+    rows: list[dict] = []
+    try:
+        for r in inventory.build_inventory(hass)["rows"]:
+            names = [r.get("name")]
+            state = hass.states.get(r["entity_id"])
+            if state and state.attributes.get("friendly_name"):
+                names.append(state.attributes["friendly_name"])
+            rows.append({**r, "names": names})
+    except ExposureUnavailable:
+        pass
+
+    return build_board(rows, endpoints, groups)
+
+
 # Endpoint categories that can be a room's preferred speaker (brand-agnostic: Echos are
 # ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
 _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
@@ -610,6 +638,184 @@ def categorize_devices(endpoints: list[dict]) -> dict[str, list[dict]]:
         else:
             keep.append(d)
     return {"keep": keep, "junk": junk, "protected": protected}
+
+
+# ── Aggregated board: one room-centric, source-tagged view of everything ─────
+# The whole panel is really ONE model — rooms, and the devices in them — joined
+# across three sources by NAME (Alexa's chrsId is an opaque UUID, not the HA
+# entity_id, so name is the only join key). build_board is PURE (takes already-
+# fetched dicts) so the fiddly join is unit-testable without the live API.
+
+
+def _norm(s) -> str:
+    return (s or "").strip().lower()
+
+
+def _endpoint_view(e: dict) -> dict:
+    """Flatten one listEndpoints endpoint into the fields the board join needs."""
+    leg = e.get("legacyIdentifiers") or {}
+    dms = leg.get("dmsIdentifier") or {}
+    return {
+        "id": e.get("id") or "",
+        "name": ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or "",
+        "category": ((e.get("displayCategories") or {}).get("primary") or {}).get("value") or "",
+        "chrs": ((leg.get("chrsIdentifier") or {}).get("entityId")) or "",
+        "device_type": (((dms.get("deviceType") or {}).get("value") or {}).get("text")) or None,
+    }
+
+
+def build_board(ha_rows, endpoints, groups, live_ids=None):
+    """Join HA exposure + Alexa endpoints + Alexa groups into a room-centric board.
+
+    PURE. Args are plain dicts already fetched by the caller:
+      ha_rows   — inventory rows {entity_id, name, domain, area, desired, exposed, ghost,
+                  names?} (names = optional lowercased aliases incl. the live friendly_name).
+      endpoints — raw listEndpoints endpoints.
+      groups    — raw listDeviceGroups.
+
+    Returns {rooms: [...], unroomed: [...]}. Each device row carries a `source`
+    ("ha" | "alexa" | "echo") and the ids each inline action needs.
+    """
+    live_ids = live_ids or set()
+    eps = [_endpoint_view(e) for e in endpoints]
+
+    # Alexa group membership + preferred speaker per room.
+    ep_room: dict[str, str] = {}
+    preferred: dict[str, str] = {}
+    group_by_norm: dict[str, dict] = {}
+    for g in groups:
+        rid = g.get("id") or ""
+        name = _group_name(g)
+        group_by_norm[_norm(name)] = {"id": rid, "name": name}
+        for m in (g.get("memberDevices") or {}).get("items") or []:
+            if m.get("id"):
+                ep_room[m["id"]] = rid
+        sel = [
+            s.get("endpointId")
+            for s in ((g.get("speakerConfiguration") or {}).get("selectedSpeakers") or [])
+            if s.get("endpointId")
+        ]
+        if sel:
+            preferred[rid] = sel[0]
+
+    # HA exposure indexed by every name it answers to, plus the set of HA areas.
+    ha_by_name: dict[str, dict] = {}
+    ha_areas: dict[str, str] = {}
+    for r in ha_rows:
+        if r.get("ghost"):
+            continue
+        if r.get("area"):
+            ha_areas[_norm(r["area"])] = r["area"]
+        for n in r.get("names") or [r.get("name")]:
+            if n:
+                ha_by_name.setdefault(_norm(n), r)
+
+    # Account-device flags (protected / cruft / duplicate) reuse the device annotator.
+    acct = [
+        {"id": e["id"], "name": e["name"], "category": e["category"]}
+        for e in eps
+        if e["device_type"] is not None
+    ]
+    acct_flags = {d["id"]: d for d in annotate_devices(acct)}
+
+    matched_ha: set[str] = set()  # HA names that DID surface as a live Alexa endpoint
+    seen_sh: set[str] = set()  # smart-home names seen, for duplicate detection
+
+    def device_row(e: dict) -> dict:
+        rid = ep_room.get(e["id"]) or None
+        row = {
+            "name": e["name"],
+            "endpoint_id": e["id"],
+            "entity_id": None,
+            "domain": None,
+            "exposed": None,
+            "room_id": rid,
+            "is_speaker": e["category"] in _SPEAKER_CATEGORIES,
+            "is_preferred": bool(rid and preferred.get(rid) == e["id"]),
+            "synced": True,
+            "protected": False,
+            "suggested_remove": False,
+            "source": "alexa",
+        }
+        if e["device_type"] is not None:
+            fl = acct_flags.get(e["id"], {})
+            row["source"] = "echo"
+            row["protected"] = fl.get("protected", False)
+            row["suggested_remove"] = fl.get("suggested_remove", False)
+            return row
+        # Smart-home endpoint: match to HA by name; 2nd+ of a name is a duplicate (cruft).
+        key = _norm(e["name"])
+        dup = key in seen_sh
+        seen_sh.add(key)
+        ha = ha_by_name.get(key)
+        if ha and not dup:
+            matched_ha.add(key)
+            row["source"] = "ha"
+            row["entity_id"] = ha.get("entity_id")
+            row["domain"] = ha.get("domain")
+            row["exposed"] = ha.get("exposed")
+        elif dup:
+            row["suggested_remove"] = True  # confident cruft signal
+        return row
+
+    ep_rows = [device_row(e) for e in eps]
+
+    # HA-exposed entities that never surfaced as an Alexa endpoint (not synced yet).
+    unsynced: list[dict] = []
+    for r in ha_rows:
+        if r.get("ghost") or not (r.get("desired") or r.get("exposed")):
+            continue
+        if any(_norm(n) in matched_ha for n in (r.get("names") or [r.get("name")]) if n):
+            continue
+        unsynced.append(
+            {
+                "name": r.get("name"),
+                "endpoint_id": None,
+                "entity_id": r.get("entity_id"),
+                "domain": r.get("domain"),
+                "exposed": r.get("exposed"),
+                "room_id": None,
+                "area": r.get("area"),
+                "is_speaker": False,
+                "is_preferred": False,
+                "synced": False,
+                "protected": False,
+                "suggested_remove": False,
+                "source": "ha",
+            }
+        )
+
+    # Bucket endpoint rows by room; unsynced HA rows by their area.
+    ep_by_room: dict[str, list] = {}
+    unroomed: list[dict] = []
+    for row in ep_rows:
+        (ep_by_room.setdefault(row["room_id"], []) if row["room_id"] else unroomed).append(row)
+    unsynced_by_area: dict[str, list] = {}
+    for u in unsynced:
+        unsynced_by_area.setdefault(_norm(u["area"]) if u["area"] else "", []).append(u)
+
+    rooms = []
+    for key in set(group_by_norm) | set(ha_areas):
+        grp = group_by_norm.get(key)
+        rid = grp["id"] if grp else None
+        devices = list(ep_by_room.get(rid, [])) if rid else []
+        devices += unsynced_by_area.get(key, [])
+        devices.sort(key=lambda d: _norm(d["name"]))
+        rooms.append(
+            {
+                "id": rid,
+                "name": grp["name"] if grp else ha_areas.get(key),
+                "in_alexa": grp is not None,
+                "in_ha": key in ha_areas,
+                "preferred_id": preferred.get(rid) if rid else None,
+                "devices": devices,
+            }
+        )
+    rooms.sort(key=lambda r: _norm(r["name"]))
+
+    unroomed += unsynced_by_area.get("", [])
+    unroomed.sort(key=lambda d: _norm(d["name"]))
+    return {"rooms": rooms, "unroomed": unroomed}
 
 
 _REMOVE = (
