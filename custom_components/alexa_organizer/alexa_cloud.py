@@ -938,7 +938,9 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
         g["expose"].append({
             "id": f"expose:{eid}", "group": "expose",
             "title": f"{'Show' if desired else 'Hide'} {r.get('name')}", "detail": "",
-            "suggested": True, "destructive": False,
+            # Showing a new device is safe → pre-checked. Hiding one you exposed is a loss
+            # of voice control → opt-in, so intentional scripts/lights stay put by default.
+            "suggested": desired, "destructive": not desired,
             "action": {"kind": "expose", "entity_id": eid, "to": desired},
         })
 

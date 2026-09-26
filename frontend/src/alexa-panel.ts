@@ -215,6 +215,7 @@ export class AlexaPanel extends LitElement {
   @state() private _opStatus: Record<string, string> = {}; // op id -> pending/running/done/error
   @state() private _applying = false;
   @state() private _userMove: Record<string, string> = {}; // endpoint id -> room id ("" = no room)
+  @state() private _expandedGroups = new Set<string>(); // review groups shown expanded
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -822,25 +823,57 @@ export class AlexaPanel extends LitElement {
     `;
   }
 
+  private _toggleGroupExpand(key: string): void {
+    const next = new Set(this._expandedGroups);
+    next.has(key) ? next.delete(key) : next.add(key);
+    this._expandedGroups = next;
+  }
+
+  private _toggleGroup(g: PlanGroup, on: boolean): void {
+    const next = new Set(this._accepted);
+    for (const o of g.ops) (on ? next.add(o.id) : next.delete(o.id));
+    this._accepted = next;
+  }
+
   private _reviewGroup(g: PlanGroup): TemplateResult {
+    const total = g.ops.length;
+    const sel = g.ops.filter((o) => this._accepted.has(o.id)).length;
+    const open = this._expandedGroups.has(g.key);
     return html`
       <div class="reviewgroup ${g.destructive ? "danger" : ""}">
-        <h3>${g.title}</h3>
-        ${g.ops.map(
-          (o) => html`
-            <label class="reviewop">
-              ${this._statusDisc(this._opStatus[o.id])}
-              <input
-                type="checkbox"
-                .checked=${this._accepted.has(o.id)}
-                ?disabled=${this._applying}
-                @change=${() => this._toggleOp(o.id)}
-              />
-              <span class="optitle">${o.title}</span>
-              ${o.detail ? html`<span class="opdetail">${o.detail}</span>` : nothing}
-            </label>
-          `
-        )}
+        <div class="grouphead">
+          <input
+            type="checkbox"
+            .checked=${sel === total && total > 0}
+            .indeterminate=${sel > 0 && sel < total}
+            ?disabled=${this._applying}
+            @change=${(e: Event) => this._toggleGroup(g, (e.target as HTMLInputElement).checked)}
+          />
+          <button class="grouptitle" @click=${() => this._toggleGroupExpand(g.key)}>
+            <span class="chev ${open ? "open" : ""}">▸</span>
+            ${g.title}
+            <span class="gcount">${sel}${sel !== total ? ` of ${total}` : ""}</span>
+          </button>
+        </div>
+        ${open
+          ? html`<div class="groupbody">
+              ${g.ops.map(
+                (o) => html`
+                  <label class="reviewop">
+                    ${this._statusDisc(this._opStatus[o.id])}
+                    <input
+                      type="checkbox"
+                      .checked=${this._accepted.has(o.id)}
+                      ?disabled=${this._applying}
+                      @change=${() => this._toggleOp(o.id)}
+                    />
+                    <span class="optitle">${o.title}</span>
+                    ${o.detail ? html`<span class="opdetail">${o.detail}</span>` : nothing}
+                  </label>
+                `
+              )}
+            </div>`
+          : nothing}
       </div>
     `;
   }
@@ -2237,14 +2270,53 @@ export class AlexaPanel extends LitElement {
       margin: 4px 0;
     }
     .reviewgroup {
-      padding: 8px 0;
+      padding: 4px 0;
       border-bottom: 1px solid var(--divider-color, #f0f0f0);
     }
-    .reviewgroup h3 {
-      margin: 6px 2px;
+    .grouphead {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 2px;
     }
-    .reviewgroup.danger h3 {
+    .grouphead input {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+    }
+    .grouptitle {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--primary-text-color, #212121);
+      text-align: left;
+    }
+    .reviewgroup.danger .grouptitle {
       color: var(--error-color, #d33);
+    }
+    .chev {
+      display: inline-block;
+      transition: transform 0.15s ease;
+      opacity: 0.6;
+      font-size: 0.8rem;
+    }
+    .chev.open {
+      transform: rotate(90deg);
+    }
+    .gcount {
+      font-weight: 400;
+      color: var(--secondary-text-color, #888);
+      font-size: 0.85rem;
+    }
+    .groupbody {
+      padding: 2px 0 6px 26px;
     }
     .reviewop {
       display: flex;

@@ -289,13 +289,16 @@ def _groups(plan):
     return {g["key"]: g for g in plan["groups"]}
 
 
-def test_plan_expose_group_from_inventory_diff():
+def test_plan_expose_shows_are_prechecked_hides_are_opt_in():
+    # Showing a new device is safe (pre-checked); HIDING a currently-exposed one is a
+    # loss of voice control → opt-in (unchecked), so scripts/lights aren't auto-hidden.
     rows = [_invrow("light.new", "New", True, False), _invrow("light.old", "Old", False, True),
             _invrow("light.ok", "OK", True, True), _invrow("light.dead", "Dead", False, True, ghost=True)]
     plan = ac.assemble_plan({"rooms": [], "unroomed": []}, rows, [])
-    ops = _groups(plan)["expose"]["ops"]
-    assert {o["action"]["entity_id"]: o["action"]["to"] for o in ops} == {"light.new": True, "light.old": False}
-    assert all(o["suggested"] for o in ops) and plan["in_sync"] is False
+    ops = {o["action"]["entity_id"]: o for o in _groups(plan)["expose"]["ops"]}
+    assert ops["light.new"].get("suggested") is True and ops["light.new"]["action"]["to"] is True
+    assert ops["light.old"].get("suggested") is False and ops["light.old"]["action"]["to"] is False
+    assert plan["in_sync"] is False  # the pre-checked show still counts
 
 
 def test_plan_place_device_into_its_area_room():

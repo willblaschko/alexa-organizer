@@ -77,7 +77,12 @@ def build_inventory(hass) -> dict:
         rows.append(
             {
                 "entity_id": entry.entity_id,
-                "name": entry.name or entry.original_name or entry.entity_id,
+                # Prefer a human name: registry name, then the live friendly_name, then
+                # the entity_id as a last resort (never show the raw id if we can help it).
+                "name": entry.name
+                or entry.original_name
+                or ((s := hass.states.get(entry.entity_id)) and s.attributes.get("friendly_name"))
+                or entry.entity_id,
                 "domain": entry.domain,
                 "area": _area_name(hass, area_id),
                 "desired": desired,
