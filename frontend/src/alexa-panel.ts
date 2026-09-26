@@ -102,6 +102,39 @@ interface RoomSpeakers {
   rooms?: RoomSpeaker[];
 }
 
+// The aggregated board: one source-tagged model of rooms and the devices in them.
+interface BoardDevice {
+  name: string;
+  source: "ha" | "alexa" | "echo";
+  endpoint_id: string | null;
+  entity_id: string | null;
+  domain: string | null;
+  exposed: boolean | null;
+  room_id: string | null;
+  area?: string | null;
+  is_speaker: boolean;
+  is_preferred: boolean;
+  synced: boolean;
+  protected: boolean;
+  suggested_remove: boolean;
+}
+
+interface BoardRoom {
+  id: string | null;
+  name: string;
+  in_alexa: boolean;
+  in_ha: boolean;
+  preferred_id: string | null;
+  devices: BoardDevice[];
+}
+
+interface BoardData {
+  available: boolean;
+  reason?: string;
+  rooms?: BoardRoom[];
+  unroomed?: BoardDevice[];
+}
+
 interface Row {
   entity_id: string;
   name: string;
@@ -194,6 +227,9 @@ export class AlexaPanel extends LitElement {
   @state() private _speakerPick: Record<string, string> = {}; // room id -> chosen speaker endpoint id
   @state() private _speakerStatus: Record<string, string> = {};
   @state() private _syncing = false; // post-apply: waiting for Alexa to reflect newly-exposed devices
+  @state() private _view: "board" | "classic" = "board";
+  @state() private _board: BoardData | null = null;
+  @state() private _boardBusy = false;
 
   private _ro?: ResizeObserver;
   private _onResize = (): void => this._positionBar();
@@ -201,6 +237,7 @@ export class AlexaPanel extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     void this._load();
+    void this._loadBoard(); // board is the default view; kicks off the aggregated read
     window.addEventListener("resize", this._onResize);
     this._ro = new ResizeObserver(() => this._positionBar());
     this._ro.observe(this);
@@ -368,7 +405,17 @@ export class AlexaPanel extends LitElement {
               actual rooms &amp; groups in the Alexa app.
             </p>
           </div>
-          <span class="chip ok headernote" ?hidden=${this._hasPending}>In sync</span>
+          <div class="headright">
+            <div class="viewtoggle">
+              <button class=${this._view === "board" ? "on" : ""} @click=${() => (this._view = "board")}>
+                Board
+              </button>
+              <button class=${this._view === "classic" ? "on" : ""} @click=${() => (this._view = "classic")}>
+                Classic
+              </button>
+            </div>
+            <span class="chip ok headernote" ?hidden=${this._hasPending}>In sync</span>
+          </div>
         </header>
 
         ${this._unavailable
@@ -385,41 +432,61 @@ export class AlexaPanel extends LitElement {
             </div>`
           : nothing}
 
-        ${this._rooms().map(
-          (room) => html`
-            <section class="room card">
-              <h2 class="rhead">
-                ${room.area}
-                <span class="count">${room.groups.reduce((n, g) => n + g.rows.length, 0)}</span>
-              </h2>
-              ${room.groups.map(
-                (g) => html`
-                  <div class="kindgroup group kind-${g.label.toLowerCase().split(" ")[0]}">
-                    <h3 class="gcap">${g.label}</h3>
-                    <div class="rows">${g.rows.map((r) => this._row(r))}</div>
-                  </div>
-                `
-              )}
-            </section>
-          `
-        )}
-        ${this._ghosts.length ? this._ghostSection() : nothing}
-        <div class="exp-divider">
-          <h2 class="exp-heading">Alexa cleanup &amp; sync <span class="exp">experimental</span></h2>
-          <p class="muted">
-            Reach into Alexa's own rooms and device list to match Home Assistant — rename and
-            clean up rooms, snap devices into them, and clear stale registrations. Needs Alexa
-            Media Player or the core Alexa Devices integration logged in.
-          </p>
-        </div>
-        ${this._roomSection()}
-        ${this._assignSection()}
-        ${this._deviceRoomsSection()}
-        ${this._speakerSection()}
-        ${this._alexaSection()}
-        ${this._shSection()}
+        ${this._view === "board"
+          ? html`
+              ${this._boardSection()}
+              ${this._ghosts.length ? this._ghostSection() : nothing}
+              <div class="exp-divider">
+                <h2 class="exp-heading">Rooms <span class="exp">experimental</span></h2>
+                <p class="muted">
+                  Manage the Alexa room list itself — rename to match Home Assistant, clear ghost
+                  rooms, create missing ones.
+                </p>
+              </div>
+              ${this._roomSection()}
+            `
+          : html`
+              ${this._rooms().map((room) => this._exposureCard(room))}
+              ${this._ghosts.length ? this._ghostSection() : nothing}
+              <div class="exp-divider">
+                <h2 class="exp-heading">Alexa cleanup &amp; sync <span class="exp">experimental</span></h2>
+                <p class="muted">
+                  Reach into Alexa's own rooms and device list to match Home Assistant — rename and
+                  clean up rooms, snap devices into them, and clear stale registrations. Needs Alexa
+                  Media Player or the core Alexa Devices integration logged in.
+                </p>
+              </div>
+              ${this._roomSection()}
+              ${this._assignSection()}
+              ${this._deviceRoomsSection()}
+              ${this._speakerSection()}
+              ${this._alexaSection()}
+              ${this._shSection()}
+            `}
       </div>
       ${this._hasPending || this._syncing ? this._deltaBar() : nothing}
+    `;
+  }
+
+  private _exposureCard(room: {
+    area: string;
+    groups: Array<{ label: string; rows: Row[] }>;
+  }): TemplateResult {
+    return html`
+      <section class="room card">
+        <h2 class="rhead">
+          ${room.area}
+          <span class="count">${room.groups.reduce((n, g) => n + g.rows.length, 0)}</span>
+        </h2>
+        ${room.groups.map(
+          (g) => html`
+            <div class="kindgroup group kind-${g.label.toLowerCase().split(" ")[0]}">
+              <h3 class="gcap">${g.label}</h3>
+              <div class="rows">${g.rows.map((r) => this._row(r))}</div>
+            </div>
+          `
+        )}
+      </section>
     `;
   }
 
@@ -448,7 +515,8 @@ export class AlexaPanel extends LitElement {
       this._assignBusy ||
       this._shBusy ||
       this._speakerBusy ||
-      this._syncing
+      this._syncing ||
+      this._boardBusy
     )
       return;
     // Dependency order: expose/create endpoints & rooms first, place devices into rooms,
@@ -465,37 +533,289 @@ export class AlexaPanel extends LitElement {
     // B-lite: if we just exposed new devices, wait for Alexa's smart-home sync to catch up,
     // then refresh the open plans so the new endpoints surface for review — never auto-placed.
     if (exposedNew > 0) await this._syncAndRefresh();
+    else if (this._board) await this._loadBoard(); // reflect applied moves/speakers/removals
   }
 
   private get _alexaEndpointCount(): number {
+    if (this._board?.rooms) {
+      const inRooms = this._board.rooms.reduce(
+        (n, r) => n + r.devices.filter((d) => d.endpoint_id).length,
+        0
+      );
+      return inRooms + (this._board.unroomed ?? []).filter((d) => d.endpoint_id).length;
+    }
     return (this._deviceRooms?.devices ?? []).length;
   }
 
   private async _syncAndRefresh(): Promise<void> {
-    // Only worth waiting if a placement tool is open to refresh the new devices into.
-    if (!this._deviceRooms && !this._assignPlan && !this._speakers) return;
+    // Only worth waiting if something is open to refresh the new devices into.
+    if (!this._board && !this._deviceRooms && !this._assignPlan && !this._speakers) return;
     this._syncing = true;
     try {
-      if (this._deviceRooms) {
+      if (this._board || this._deviceRooms) {
         const baseline = this._alexaEndpointCount;
-        // Bounded poll (~48s): re-read the device list until Alexa shows a new endpoint,
+        // Bounded poll (~48s): re-read the endpoint list until Alexa shows a new endpoint,
         // then stop. Timing out is fine — we refresh with whatever synced so far.
         for (let i = 0; i < 12; i++) {
           await new Promise((r) => setTimeout(r, 4000));
-          await this._loadDeviceRooms();
+          if (this._board) await this._loadBoard();
+          else await this._loadDeviceRooms();
           if (this._alexaEndpointCount > baseline) break;
         }
       } else {
-        // No endpoint list open to signal on — give Alexa a short beat, then refresh.
+        // Nothing to signal on — give Alexa a short beat, then refresh.
         await new Promise((r) => setTimeout(r, 8000));
       }
-      // Refresh the other opened plans so the new endpoints appear everywhere for review.
+      // Refresh everything open so the new endpoints appear everywhere for review.
+      if (this._board) await this._loadBoard();
+      if (this._deviceRooms) await this._loadDeviceRooms();
       if (this._assignPlan) await this._loadAssignPlan();
       if (this._speakers) await this._loadSpeakers();
       if (this._roomPlan) await this._loadRoomPlan();
     } finally {
       this._syncing = false;
     }
+  }
+
+  // ── Aggregated board (the default view) ─────────────────────────────────────
+
+  private async _loadBoard(): Promise<void> {
+    if (this._boardBusy) return;
+    this._boardBusy = true;
+    try {
+      this._board = await this.hass.connection.sendMessagePromise<BoardData>({
+        type: "alexa_organizer/board",
+      });
+    } finally {
+      this._boardBusy = false;
+    }
+  }
+
+  private _rowFor(entityId: string): Row | undefined {
+    return this._rows.find((r) => r.entity_id === entityId);
+  }
+
+  private async _toggleExpose(entityId: string, expose: boolean): Promise<void> {
+    if (this._busy) return;
+    this._busy = true;
+    try {
+      const inv = await this.hass.connection.sendMessagePromise<Inventory>({
+        type: "alexa_organizer/set",
+        entity_id: entityId,
+        expose,
+      });
+      this._ingest(inv);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private _onBoardMove(endpointId: string, currentRoomId: string, value: string): void {
+    const next = { ...this._moves };
+    if (value === currentRoomId) delete next[endpointId];
+    else next[endpointId] = value;
+    this._moves = next;
+  }
+
+  private _onBoardPreferred(roomId: string, endpointId: string, currentPreferred: string | null): void {
+    const next = { ...this._speakerPick };
+    if (endpointId === (currentPreferred ?? "")) delete next[roomId];
+    else next[roomId] = endpointId;
+    this._speakerPick = next;
+  }
+
+  private _toggleBoardRemove(d: BoardDevice): void {
+    if (!d.endpoint_id || d.protected) return;
+    if (d.source === "echo") {
+      const next = new Set(this._alexaRemove);
+      next.has(d.endpoint_id) ? next.delete(d.endpoint_id) : next.add(d.endpoint_id);
+      this._alexaRemove = next;
+    } else {
+      const next = new Set(this._shRemove);
+      next.has(d.endpoint_id) ? next.delete(d.endpoint_id) : next.add(d.endpoint_id);
+      this._shRemove = next;
+    }
+  }
+
+  // Bucket a room's devices into the colored kind-boxes: HA kinds by domain, plus
+  // Alexa-only and Echo as their own boxes.
+  private _boardBuckets(
+    devices: BoardDevice[]
+  ): Array<{ label: string; kind: string; devices: BoardDevice[] }> {
+    const buckets = new Map<
+      string,
+      { label: string; kind: string; order: number; devices: BoardDevice[] }
+    >();
+    for (const d of devices) {
+      let key: string, label: string, kind: string, order: number;
+      if (d.source === "echo") [key, label, kind, order] = ["echo", "Echo", "echo", 90];
+      else if (d.source === "alexa") [key, label, kind, order] = ["alexa", "Alexa-only", "alexa", 91];
+      else {
+        const i = d.domain ? kindIndex(d.domain) : KIND_GROUPS.length - 1;
+        [key, label, kind, order] = ["k" + i, KIND_GROUPS[i].label, KIND_GROUPS[i].label.toLowerCase().split(" ")[0], i];
+      }
+      const b = buckets.get(key);
+      if (b) b.devices.push(d);
+      else buckets.set(key, { label, kind, order, devices: [d] });
+    }
+    return [...buckets.values()].sort((a, b) => a.order - b.order);
+  }
+
+  private _boardSection(): TemplateResult {
+    const b = this._board;
+    if (b?.available === false) {
+      // Alexa not connected — fall back to HA exposure cards so exposure still works.
+      return html`
+        <div class="banner warn">
+          Alexa not connected (${b.reason ?? "no session"}). Showing Home Assistant exposure only —
+          switch to Classic for the full toolset once a session is available.
+        </div>
+        ${this._rooms().map((room) => this._exposureCard(room))}
+      `;
+    }
+    if (!b) return html`<p class="muted">Loading Alexa board…</p>`;
+    const rooms = (b.rooms ?? [])
+      .filter((r) => r.id)
+      .map((r) => ({ id: r.id as string, name: r.name }));
+    return html`
+      ${(b.rooms ?? []).map((room) => this._boardRoomCard(room, rooms))}
+      ${(b.unroomed ?? []).length ? this._boardUnroomed(b.unroomed ?? [], rooms) : nothing}
+    `;
+  }
+
+  private _boardRoomCard(
+    room: BoardRoom,
+    rooms: Array<{ id: string; name: string }>
+  ): TemplateResult {
+    const badge =
+      room.in_ha && room.in_alexa
+        ? html`<span class="chip ok">HA · Alexa</span>`
+        : room.in_ha
+          ? html`<span class="chip warn">HA area · not in Alexa</span>`
+          : html`<span class="chip warn">Alexa room · no HA area</span>`;
+    return html`
+      <section class="room card">
+        <h2 class="rhead">
+          ${room.name} <span class="count">${room.devices.length}</span> ${badge}
+        </h2>
+        ${this._boardBuckets(room.devices).map(
+          (bk) => html`
+            <div class="kindgroup group kind-${bk.kind}">
+              <h3 class="gcap">${bk.label}</h3>
+              <div class="rows">${bk.devices.map((d) => this._boardDeviceRow(d, room, rooms))}</div>
+            </div>
+          `
+        )}
+      </section>
+    `;
+  }
+
+  private _boardUnroomed(
+    devices: BoardDevice[],
+    rooms: Array<{ id: string; name: string }>
+  ): TemplateResult {
+    const fake: BoardRoom = {
+      id: null, name: "No room", in_alexa: false, in_ha: false, preferred_id: null, devices,
+    };
+    return html`
+      <section class="room card">
+        <h2 class="rhead">No room <span class="count">${devices.length}</span></h2>
+        ${this._boardBuckets(devices).map(
+          (bk) => html`
+            <div class="kindgroup group kind-${bk.kind}">
+              <h3 class="gcap">${bk.label}</h3>
+              <div class="rows">${bk.devices.map((d) => this._boardDeviceRow(d, fake, rooms))}</div>
+            </div>
+          `
+        )}
+      </section>
+    `;
+  }
+
+  private _boardDeviceRow(
+    d: BoardDevice,
+    room: BoardRoom,
+    rooms: Array<{ id: string; name: string }>
+  ): TemplateResult {
+    const chip =
+      d.source === "ha"
+        ? `HA · ${DOMAIN_CHIP[d.domain ?? ""] ?? d.domain ?? "HA"}`
+        : d.source === "echo"
+          ? "Echo"
+          : "Alexa-only";
+    const haRow = d.entity_id ? this._rowFor(d.entity_id) : undefined;
+    const exposed = haRow ? haRow.desired : d.exposed;
+    const pendingExpose = haRow ? haRow.desired !== haRow.exposed : false;
+    const effPreferred = room.id ? this._speakerPick[room.id] ?? room.preferred_id : null;
+    const staged = d.endpoint_id ? d.endpoint_id in this._moves : false;
+    const selectedRoom = staged ? this._moves[d.endpoint_id as string] : d.room_id ?? "";
+    const removing = d.endpoint_id
+      ? this._alexaRemove.has(d.endpoint_id) || this._shRemove.has(d.endpoint_id)
+      : false;
+    const busy = this._busy || this._boardBusy;
+    return html`
+      <div class="row ${staged ? "moving" : ""} ${removing ? "removing" : ""}">
+        <div class="info">
+          <div class="name">
+            ${d.name} ${pendingExpose ? html`<span class="dot" title="pending"></span>` : nothing}
+          </div>
+          <div class="meta">
+            <span class="kind">${chip}</span>
+            ${!d.synced ? html`<span class="reason">⚠ not synced to Alexa yet</span>` : nothing}
+          </div>
+        </div>
+        <div class="rowctl">
+          ${d.source === "ha" && d.entity_id
+            ? html`<button
+                class="toggle ${exposed ? "on" : "off"}"
+                ?disabled=${busy}
+                @click=${() => this._toggleExpose(d.entity_id as string, !exposed)}
+                title=${exposed ? "Exposed to Alexa — click to hide" : "Hidden — click to expose"}
+              >
+                ${exposed ? "On" : "Off"}
+              </button>`
+            : nothing}
+          ${d.is_speaker && d.endpoint_id && room.id
+            ? html`<button
+                class="star ${effPreferred === d.endpoint_id ? "on" : ""}"
+                ?disabled=${busy}
+                title="Preferred speaker for this room"
+                @click=${() =>
+                  this._onBoardPreferred(room.id as string, d.endpoint_id as string, room.preferred_id)}
+              >
+                ★
+              </button>`
+            : nothing}
+          ${d.endpoint_id
+            ? html`<select
+                class="roomsel"
+                ?disabled=${busy}
+                @change=${(e: Event) =>
+                  this._onBoardMove(
+                    d.endpoint_id as string,
+                    d.room_id ?? "",
+                    (e.target as HTMLSelectElement).value
+                  )}
+              >
+                <option value="" ?selected=${selectedRoom === ""}>(no room)</option>
+                ${rooms.map(
+                  (r) => html`<option value=${r.id} ?selected=${selectedRoom === r.id}>${r.name}</option>`
+                )}
+              </select>`
+            : nothing}
+          ${d.endpoint_id && !d.protected && (d.suggested_remove || d.source !== "ha")
+            ? html`<button
+                class="rm ${removing ? "on" : ""}"
+                ?disabled=${busy}
+                title=${d.source === "echo" ? "Deregister this device" : "Remove this endpoint"}
+                @click=${() => this._toggleBoardRemove(d)}
+              >
+                ${removing ? "Removing" : "Remove"}
+              </button>`
+            : nothing}
+        </div>
+      </div>
+    `;
   }
 
   private async _loadRoomPlan(): Promise<void> {
@@ -647,17 +967,16 @@ export class AlexaPanel extends LitElement {
   }
 
   private async _applySh(): Promise<void> {
-    const cands = (this._shPlan?.candidates ?? []).filter((c) => this._shRemove.has(c.id));
-    for (const c of cands) {
-      this._shStatus = { ...this._shStatus, [c.id]: "running" };
+    for (const id of [...this._shRemove]) {
+      this._shStatus = { ...this._shStatus, [id]: "running" };
       try {
-        await this.hass.callService("alexa_organizer", "forget_endpoint", { endpoint_id: c.id });
-        this._shStatus = { ...this._shStatus, [c.id]: "done" };
+        await this.hass.callService("alexa_organizer", "forget_endpoint", { endpoint_id: id });
+        this._shStatus = { ...this._shStatus, [id]: "done" };
       } catch {
-        this._shStatus = { ...this._shStatus, [c.id]: "error" };
+        this._shStatus = { ...this._shStatus, [id]: "error" };
       }
     }
-    await this._loadSmarthome();
+    if (this._shPlan) await this._loadSmarthome();
   }
 
   private _shSection(): TemplateResult {
@@ -953,14 +1272,20 @@ export class AlexaPanel extends LitElement {
     `;
   }
 
+  // The endpoint's CURRENT room, resolved from whichever view is loaded (board or classic).
+  private _endpointRoom(id: string): string | null {
+    for (const room of this._board?.rooms ?? []) {
+      if (room.devices.some((d) => d.endpoint_id === id)) return room.id;
+    }
+    return (this._deviceRooms?.devices ?? []).find((d) => d.id === id)?.room_id ?? null;
+  }
+
   private async _applyMoves(): Promise<void> {
-    const byId = new Map((this._deviceRooms?.devices ?? []).map((d) => [d.id, d]));
     for (const [id, to] of Object.entries(this._moves)) {
-      const d = byId.get(id);
-      if (!d) continue;
       this._moveStatus = { ...this._moveStatus, [id]: "running" };
+      const from = this._endpointRoom(id);
       const data: Record<string, unknown> = { endpoint_id: id };
-      if (d.room_id) data.from = d.room_id;
+      if (from) data.from = from;
       if (to) data.to = to;
       try {
         await this.hass.callService("alexa_organizer", "move_device", data);
@@ -969,7 +1294,7 @@ export class AlexaPanel extends LitElement {
         this._moveStatus = { ...this._moveStatus, [id]: "error" };
       }
     }
-    await this._loadDeviceRooms();
+    if (this._deviceRooms) await this._loadDeviceRooms();
   }
 
   private _deviceRoomsSection(): TemplateResult {
@@ -1132,7 +1457,8 @@ export class AlexaPanel extends LitElement {
       this._assignBusy ||
       this._shBusy ||
       this._speakerBusy ||
-      this._syncing;
+      this._syncing ||
+      this._boardBusy;
     return html`
       <div class="deltabar ${busy ? "busy" : ""}">
         <div class="flare"></div>
@@ -1467,6 +1793,70 @@ export class AlexaPanel extends LitElement {
     .room .kind-climate  { --kind: #129d9d; }
     .room .kind-scenes   { --kind: #6a4bd8; }
     .room .kind-other    { --kind: #6b7280; }
+    .room .kind-echo     { --kind: #b06f2e; }
+    .room .kind-alexa    { --kind: #9333ea; }
+    /* Per-device inline controls in the board */
+    .rowctl {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .star {
+      border: 1px solid var(--divider-color, #d0d0d0);
+      background: var(--card-background-color, #fff);
+      color: var(--secondary-text-color, #999);
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .star.on {
+      color: #f5b301;
+      border-color: #f5b301;
+      background: color-mix(in srgb, #f5b301 14%, var(--card-background-color, #fff));
+    }
+    .rm {
+      border: 1px solid var(--divider-color, #d0d0d0);
+      background: var(--card-background-color, #fff);
+      color: var(--secondary-text-color, #999);
+      border-radius: 8px;
+      padding: 5px 9px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .rm.on {
+      color: #fff;
+      background: var(--error-color, #d33);
+      border-color: var(--error-color, #d33);
+    }
+    .headright {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .viewtoggle {
+      display: inline-flex;
+      border: 1px solid var(--divider-color, #d0d0d0);
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    .viewtoggle button {
+      border: none;
+      background: var(--card-background-color, #fff);
+      color: var(--secondary-text-color, #777);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .viewtoggle button.on {
+      background: var(--primary-color, #2f6fed);
+      color: #fff;
+    }
     .row {
       display: flex;
       align-items: center;
