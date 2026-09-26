@@ -695,12 +695,12 @@ export class AlexaPanel extends LitElement {
       box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
     }
     /* Inside a room card: each kind is a tinted box with an accent rail. */
-    /* Kind boxes flow side-by-side on a wide room card, collapse to one column when narrow. */
+    /* Masonry: kind boxes pack into as many ~260px columns as fit, flowing down each
+       column so tall boxes (Lighting) don't force short ones (Climate) to waste height.
+       CSS multi-column is the broadly-supported way to do this today. */
     .kindgrid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 10px;
-      align-items: start;
+      column-width: 260px;
+      column-gap: 10px;
     }
     .room .kindgroup {
       --kind: var(--secondary-text-color, #6b7280);
@@ -709,7 +709,8 @@ export class AlexaPanel extends LitElement {
       border-radius: 10px;
       background: color-mix(in srgb, var(--kind) 7%, var(--card-background-color, #fff));
       padding: 4px 10px 8px;
-      min-width: 0;
+      margin-bottom: 10px;
+      break-inside: avoid; /* never split a box across columns */
     }
     .room .kindgroup .gcap {
       color: var(--kind);
