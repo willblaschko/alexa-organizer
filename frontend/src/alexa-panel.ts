@@ -708,13 +708,19 @@ export class AlexaPanel extends LitElement {
       border-left: 3px solid var(--kind);
       border-radius: 10px;
       background: color-mix(in srgb, var(--kind) 7%, var(--card-background-color, #fff));
-      padding: 4px 10px 8px;
-      margin-bottom: 10px;
+      padding: 10px 10px 8px; /* top padding (not a child margin) so the title never clips */
+      margin: 0 0 10px;
+      min-width: 0;
+      display: flow-root; /* own block-formatting context — no margin-clip at a column top */
+      -webkit-column-break-inside: avoid;
       break-inside: avoid; /* never split a box across columns */
     }
+    /* Title, a divider, then the devices — always in that order, never cut off. */
     .room .kindgroup .gcap {
       color: var(--kind);
-      margin: 8px 2px 6px;
+      margin: 0 0 6px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid color-mix(in srgb, var(--kind) 20%, transparent);
     }
     .room .kindgroup .rows {
       background: transparent;
