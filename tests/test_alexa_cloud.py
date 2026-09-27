@@ -123,6 +123,21 @@ def test_annotate_protects_this_device_and_audible():
     assert rows["Will's Audible for iPhone"]["protected"] and rows["Will's Audible for iPhone"]["suggested_remove"] is False
 
 
+def test_board_never_flags_protected_name_duplicate():
+    # Two "This Device" HA-proxy endpoints: the duplicate must NOT be suggested for removal,
+    # and both are protected — the protection applies on the board/plan path, not just cleanup.
+    board = ac.build_board(
+        [],
+        [
+            _ep("e1", "This Device", "TV", manufacturer="Home Assistant"),
+            _ep("e2", "This Device", "TV", manufacturer="Home Assistant"),
+        ],
+        [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
+    )
+    for d in _rooms(board)["Bedroom"]["devices"]:
+        assert d["protected"] is True and d["suggested_remove"] is False
+
+
 def test_annotate_flags_companion_app_cruft():
     rows = {r["name"]: r for r in ac.annotate_devices([_dev("Will's 3rd Android Device"), _dev("Kitchen")])}
     assert rows["Will's 3rd Android Device"]["suggested_remove"] is True

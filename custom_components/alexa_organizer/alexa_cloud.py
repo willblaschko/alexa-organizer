@@ -488,6 +488,14 @@ _APP_CRUFT = (
 )
 
 
+def _is_protected(name: str | None, category: str | None = "") -> bool:
+    """A never-remove device, by name or category — applies EVERYWHERE removals are proposed
+    (device cleanup, the board, the plan), not just to Amazon device registrations. This is
+    why "This Device"/"Audible" copies bridged from Home Assistant are also protected."""
+    lname = (name or "").lower()
+    return (category or "") in _PROTECT_CATEGORY or any(p in lname for p in _PROTECT_NAME)
+
+
 async def async_list_endpoints(hass, email: str | None = None) -> list[dict]:
     """Return the account's DEVICE endpoints (those with a deviceType). Read-only.
 
@@ -514,7 +522,7 @@ def annotate_devices(endpoints: list[dict]) -> list[dict]:
     out: list[dict] = []
     for e in endpoints:
         lname = e["name"].lower()
-        protected = e["category"] in _PROTECT_CATEGORY or any(p in lname for p in _PROTECT_NAME)
+        protected = _is_protected(e["name"], e["category"])
         count = seen.get(lname, 0)
         seen[lname] = count + 1
         is_duplicate = count > 0  # a later device sharing an earlier one's name
@@ -629,6 +637,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
 
     def device_row(e: dict) -> dict:
         rid = ep_room.get(e["id"]) or None
+        prot = _is_protected(e["name"], e.get("category"))  # never-remove (This Device/Audible/…)
         row = {
             "name": e["name"],
             "endpoint_id": e["id"],
@@ -649,7 +658,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             ),
             "is_preferred": bool(rid and preferred.get(rid) == e["id"]),
             "synced": True,
-            "protected": False,
+            "protected": prot,
             "suggested_remove": False,
             "source": "alexa",
             "area": None,
@@ -661,8 +670,8 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
         if e["device_type"] is not None:
             fl = acct_flags.get(e["id"], {})
             row["source"] = "echo"
-            row["protected"] = fl.get("protected", False)
-            row["suggested_remove"] = fl.get("suggested_remove", False)
+            row["protected"] = prot or fl.get("protected", False)
+            row["suggested_remove"] = (not row["protected"]) and fl.get("suggested_remove", False)
             return row
         # Smart-home endpoint: match to HA by name; 2nd+ of a name is a duplicate (cruft).
         key = _norm(e["name"])
@@ -676,8 +685,8 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             row["domain"] = ha.get("domain")
             row["exposed"] = ha.get("exposed")
             row["area"] = ha.get("area")
-        elif dup:
-            row["suggested_remove"] = True  # confident cruft signal
+        elif dup and not prot:
+            row["suggested_remove"] = True  # confident cruft signal (never for protected names)
         return row
 
     ep_rows = [device_row(e) for e in eps]
