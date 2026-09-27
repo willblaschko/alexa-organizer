@@ -1,160 +1,223 @@
 # Alexa Organizer
 
-**Make Home Assistant the source of truth for what Alexa sees.**
+**Your house, in Alexa.** — one review, one tap, and Alexa matches Home Assistant.
 
-Home Assistant exposes *entities*; Alexa wants *things you'd say out loud*. The gap between
-those is why keeping Alexa in sync is miserable — a flood of 1,000 entities, endless pruning
-and re-organizing in the Alexa app, and devices that quietly drop out of their rooms.
+[![Validate](https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml/badge.svg)](https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-Alexa Organizer is **opinionated**. Instead of handing you a flat list to manage by hand, it
-ships a strong policy about what belongs in Alexa, exposes exactly that, and keeps it in sync
-as you add rooms and devices — while staying out of the way of the things Alexa alone controls.
+Alexa Organizer makes **Home Assistant the source of truth for Alexa**. It looks at your
+areas and devices, works out how Alexa *should* look — which devices it sees, which rooms
+exist, what's in each room, which speaker plays music — and shows you the difference. Review
+it, hit **Sync**, done. No more afternoons in the Alexa app dragging devices around, deleting
+"Media Room 3", or wondering why "turn on the office" stopped working.
 
-> **Status:** the reconcile engine and a sidebar **panel** (the exposure dashboard, grouped by
-> your HA areas) are in. Per-area light groups and the **experimental [Alexa Room Sync](#experimental-alexa-room-sync)**
-> are next. A sibling project to [Chorus](https://github.com/willblaschko/chorus).
+- **Home-Assistant-first.** Your areas become Alexa's rooms; every device lands in its room.
+  Rename or rearrange in HA, and Alexa follows on the next sync.
+- **Opinionated, so you don't have to be.** Only real voice targets reach Alexa — lights,
+  speakers, climate, scenes, covers, fans. Sensors, buttons, and config toggles never do.
+- **One device, one row.** An Echo or Sonos that Home Assistant *also* sends to Alexa shows
+  up once, and moving or removing it takes every copy along.
+- **Speakers that play where you are.** Pick each room's main speaker — Echo or Sonos — and
+  "play music" in that room plays there.
+- **Staged, not surprising.** Arrange freely; nothing changes in Alexa until you review the
+  plan and hit **Sync**. Nothing runs in the background.
 
-## What it does
+**Install:** HACS → ⋮ → *Custom repositories* → add this repo as an **Integration** →
+Download → restart Home Assistant → add the **Alexa Organizer** integration.
+([full steps ↓](#install-hacs-custom-repository))
 
-- **De-clutters Alexa for good.** Only the entities that make sense as voice targets are
-  exposed — room speakers, lights (that live in a room), climate, scenes, covers, fans, and
-  the handful of scripts you tag as voice scenes. Sensors, buttons, config toggles, diagnostic
-  junk: never.
-- **Stays in sync automatically.** Add a bulb, add a room, re-home a device — Alexa Organizer
-  reconciles exposure within seconds. No trip to the Alexa app.
-- **Owns the "expose new entities" default.** It keeps that OFF for Alexa, so nothing leaks in
-  except through the policy.
+> **Beta.** This runs on one real house so far and is looking for testers. The room and
+> speaker features use Alexa's private API — read [the heads-up](#heads-up) before you sync.
+> A sibling to [Chorus](https://github.com/willblaschko/chorus).
 
-## The honest scope
+## The idea
 
-Amazon gives **no consumer API** for Alexa Groups or preferred-speaker room routing — that
-pairing is app-only, for everyone. So:
-
-| Your pain | What this fixes |
-|---|---|
-| **Clutter / a messy Alexa app** | ✅ Directly. The junk never reaches Alexa again. |
-| **Room organization keeps drifting** | 🟡 Substantially — see the stability contract below. The core can't *create* Alexa rooms (no official API), but it stops them from falling apart; the experimental [Alexa Room Sync](#experimental-alexa-room-sync) *can* push your HA areas into Alexa. |
-| **Multi-room music routing** | 🔴 Mostly Amazon-side. Out of scope (a later version can expose your music scripts as Alexa scenes). |
-
-### The stability contract
-
-Most "drift" isn't you — it's **churn**. When a device is unexposed→re-exposed, or its
-`entity_id` changes, Alexa treats it as *removed → new* and drops it out of its Alexa Group,
-so "play music in the office" or "turn on the kitchen lights" stops finding it until you
-re-add it in the app.
-
-Alexa Organizer is built around never causing that:
-
-- It applies **only genuine changes** — an entity already in the right state is never touched
-  (no flapping).
-- A reconcile that would **unexpose more than a few entities HOLDS** its removals, logs loudly,
-  and raises a notification. A policy mistake can never mass-unexpose your house and nuke every
-  Alexa Group. (Additions always apply — they can't break routing.)
-
-## The policy (Phase 1)
-
-Membership is **rules, not lists** — nothing to go stale when entity_ids churn:
-
-| Tier | Domains | Exposed? |
-|---|---|---|
-| **1** | `media_player`, `climate`, `scene`, `cover`, `fan`, `vacuum` | ✅ by default |
-| **area-scoped** | `light`, `switch` | ✅ only if the entity has an HA **area** (a room-scoped target; drops area-less junk) |
-| **2** | `lock`, `camera` | ❌ (a UI toggle in Phase 2) |
-| **3** | `sensor`, `binary_sensor`, `number`, `button`, `automation`, `script`, `input_*`, … | ❌ never — unless force-labelled |
-
-Config/diagnostic entities (those with an `entity_category`) and hidden entities are never
-exposed.
-
-### Overrides are HA **labels**, not code
-
-The handful of things no rule can infer — *which scripts are voice scenes, which helpers are
-voice targets* — you mark with a label in HA (Settings › Labels, then tag the entity):
-
-- Label an entity **`alexa`** → force-exposed (this is how voice-scene scripts and voice
-  helpers opt in; also how you expose a *hidden* light you still want in Alexa).
-- Label an entity **`alexa-hide`** → force-excluded (wins over everything).
-
-The policy reads labels live. Nothing is hardcoded; you manage the exceptions in HA where
-they belong. Lights are individual-but-room-scoped in Phase 1; the flagship per-area **light
-groups** ("Kitchen Lights") arrive in Phase 3.
-
-### Churn cleanup (the stability contract, in practice)
-
-Sonos re-discovery leaves **stale exposure records** — entity_ids Alexa still lists for
-speakers that were renamed or removed. The engine treats a removal of a **ghost** (an
-entity_id that no longer exists) as always-safe cleanup, so it never trips the fail-safe.
-Only removals of entities that *still exist* count against the safety threshold — and a large
-batch of those is held with a notification until you approve it (see `max_removals` below).
-
-## Install
-
-HACS → ⋮ → **Custom repositories** → add `https://github.com/willblaschko/alexa-organizer`
-(category: *Integration*) → install → restart HA → **Settings › Devices & Services › Add
-Integration › Alexa Organizer**.
-
-**Requirements:**
-- **Home Assistant Cloud (Nabu Casa)** with Alexa enabled — the exposure path (the whole core).
-- **Only for the experimental [Alexa Room Sync](#experimental-alexa-room-sync):** an Amazon
-  session to piggyback — **either** the core [**Alexa Devices**](https://www.home-assistant.io/integrations/alexa_devices/)
-  integration (preferred: official, self-healing auth) **or** [**Alexa Media Player**](https://github.com/alandtse/alexa_media_player).
-  Room Sync borrows whichever is logged in (Alexa Devices first) to reach Alexa's internal API.
-  The exposure core does **not** need either.
-
-## Use it
-
-Open **Alexa Organizer** in the sidebar (admin only): a dashboard grouped by your HA areas, then
-by type (Lighting, Speakers, Climate, …), with a one-click on/off per entity — toggling writes
-the `alexa` / `alexa-hide` label for you — a live preview of pending changes (split into live
-vs. stale/ghost), and an **Apply** button.
-
-Or drive it from two services (Developer Tools › Actions):
-
-- **`alexa_organizer.preview`** — dry run. Reports what *would* change (a notification + the log),
-  split into live vs. stale/ghost removals; changes nothing. **Run this first.**
-- **`alexa_organizer.reconcile`** — apply now (respects the fail-safe hold). Takes an optional
-  **`max_removals`** to raise the live-removal guard for one run — use a high value for the
-  initial cleanup after you've reviewed a preview; omit it for the safe default afterward.
-
-Otherwise it runs itself: on startup and whenever your entities or areas change.
-
-## Experimental: Alexa Room Sync
-
-> ⚠️ **Experimental, opt-in, and off by default.** This is the one part of Alexa Organizer that
-> leaves the safe, local path. It is **not** part of the robust exposure core and can break at
-> any time.
-
-The core makes Alexa *see* the right devices; Room Sync makes Alexa *organize* them the way
-Home Assistant does — a **1:1 mirror of your HA areas → Alexa rooms**. It reconciles the two
-one-directionally (HA is the source of truth): create rooms that are missing, rename to match,
-delete the ghost/junk rooms, assign your exposed devices, and set the Sonos as preferred
-speaker. Same opinionated, self-healing stance as the exposure engine — and the same safety:
-a **Chorus-style action-list preview** (dry-run diff you review, expand per row), a per-room
-opt-out, and a fail-safe guard so "force our format" never blindly nukes a room you meant to keep.
-
-**How it authenticates.** There is **no official/sanctioned API** for Alexa rooms/groups — for
-anyone. Room Sync uses Alexa's **internal, undocumented GraphQL API** (the same one the Alexa
-app uses), reached by piggybacking the Amazon session held by the
-[Alexa Media Player](https://github.com/alandtse/alexa_media_player) integration. So it
-**requires Alexa Media Player installed and logged in**; without it, Room Sync stays dark and
-the rest of Alexa Organizer works normally.
-
-**Know what you're opting into:**
-- It's a **reverse-engineered, undocumented** API. Amazon can (and does) change it without
-  notice — no stability guarantee.
-- Using it is **against Amazon's Terms of Service**, and leans on Alexa Media Player's cookie
-  auth (periodic re-login, credentials/2FA-seed on the box). Use it on your own account at your
-  own risk.
-- **Preferred speaker** is gated by Amazon to Echos + approved partners (e.g. Sonos); arbitrary
-  speakers are rejected server-side.
-
-## Development
-
-```
-python3 tests/run.py     # pure unit tests (policy tiers + engine diff/guard), no HA needed
+```mermaid
+flowchart TD
+  H["🏠 Home Assistant<br/>your areas + devices"]:::src
+  H --> O["Alexa Organizer<br/>works out how Alexa should look"]:::hub
+  O --> E["Only real voice targets<br/>reach Alexa"]:::out
+  O --> R["Rooms = your areas,<br/>every device in its room"]:::out
+  O --> S["Each room's main speaker<br/>plays when you say 'play music'"]:::out
+  classDef src fill:#334155,stroke:#64748b,color:#f1f5f9
+  classDef hub fill:#2563eb,stroke:#93c5fd,color:#ffffff,font-weight:bold
+  classDef out fill:#6d28d9,stroke:#c4b5fd,color:#ffffff
 ```
 
-Deployed like Chorus: a git checkout in your HA `/config`, `git pull` + `ha core restart`.
+---
+
+## Status
+
+**Working on a real house; ready for testers.**
+
+- ✅ **Exposure** — a rules-based policy decides what Alexa sees; HA labels handle the
+  exceptions. New entities are never auto-exposed.
+- ✅ **Rooms** — HA areas become Alexa rooms: missing rooms created, near-misses renamed,
+  Alexa's churn duplicates ("Media Room 2", "Media Room 3") folded into one, empty ghost
+  rooms deleted.
+- ✅ **Placement** — every device lands in its area's room; move anything from its row.
+- ✅ **Speakers** — set each room's main speaker (Echo, or Sonos via the Sonos skill) so a
+  plain "play music" plays there.
+- ✅ **One device, one row** — an Echo and its Home Assistant copy are joined by serial
+  number, so actions hit both and renames don't split them.
+- ✅ **Echo rename on move** — move an Echo and it can take its new room's name.
+- ✅ **Cleanup** — remove old phone-app registrations, duplicates, and strays from Alexa.
+- 🧪 **Needs testers** — houses that aren't mine: other Echo models, non-Sonos speakers,
+  bigger setups, Alexa accounts outside the US.
+
+---
+
+## Why it exists
+
+Home Assistant's Alexa integration exposes **entities**, one by one. Alexa thinks in
+**rooms** — and there's no official API to manage them, so keeping the two in sync means
+doing it by hand in the Alexa app, forever. Meanwhile it drifts: speakers get re-discovered
+as "Media Room 2", devices fall out of their rooms, Home Assistant sends Alexa a second copy
+of every Echo it already has, and a thousand sensors wait to flood the device list.
+
+Alexa Organizer takes a stance on all of it and keeps it that way — while showing you exactly
+what it's about to do first.
+
+---
+
+## Features
+
+### The Home screen
+
+- **One status line** — *"Alexa matches your house"*, or *"12 changes to make Alexa match
+  your house"* with a **Review & Sync** button.
+- **Your house, as Alexa will see it** — rooms and their devices, showing the result *after*
+  your changes, grouped by kind (Lighting, Speakers, Climate, …).
+- **Review, then sync** — a grouped, plain-language change list with a checkbox per change.
+  Sync runs it in the right order (rooms before the devices that go in them, deletions
+  last), with a status mark on every step.
+
+### What Alexa sees
+
+- **Rules, not lists** — lights and switches that live in an area, speakers, climate,
+  scenes, covers, fans, and vacuums are exposed; everything else isn't.
+- **Labels for the exceptions** — tag an entity `alexa` to force it in (voice-scene
+  scripts), or `alexa-hide` to keep it out. Untick an exposure change in the review and
+  Sync pins your choice with the label for you.
+- **No duplicate switches** — a switch that just powers an exposed light stays hidden.
+- **Nothing leaks in** — Home Assistant's "expose new entities" stays off, and nothing
+  changes in the background.
+
+### Rooms & devices
+
+- **Areas → rooms**, including creating a room the moment an area has devices, and fixing
+  names that are almost right.
+- **Move anything** from its row; the preview shows it in its new room right away.
+- **One device, one row** — moving or removing a device takes its Home Assistant copy with
+  it. If the two ever end up in different rooms, the plan puts them back together.
+- **Echos take their room's name** — move "Kitchen Echo Dot" to the Office and it can become
+  "Office Echo Dot" (a checkbox you can untick).
+- **Vacuums stay out of rooms**, so "turn on the living room" doesn't start the robot.
+- **Your moves stick** — the plan never second-guesses a device you've put in a room.
+
+### Speakers
+
+- **Make main** — pick which speaker answers "play music" in each room. Works with Echos and
+  with Sonos (via the Sonos Alexa skill).
+- **Always, not just when named** — rooms default to playing on their main speaker for a
+  plain "play music", not only when you say the room's name.
+- **Honest labels** — each speaker shows who made it. Home Assistant copies (which Alexa
+  can't play music to) stay out of the way.
+
+### Cleanup & safety
+
+- **Remove** any device from its row — Amazon devices are deregistered, strays are
+  forgotten, Home Assistant devices just stop being sent to Alexa.
+- **Protected** — "This Device" (the phone you're on), Audible, and the logins this tool
+  relies on can never be removed.
+- **Suggestions, not surprises** — confident junk (old phone-app registrations, duplicates)
+  is pre-checked; anything ambiguous is opt-in.
+
+---
+
+## Heads-up
+
+The **exposure** side uses Home Assistant Cloud's normal Alexa connection. The **rooms,
+speakers, and cleanup** side has no official API anywhere, so it uses Alexa's own private
+API — the one the Alexa app uses — through your existing Alexa login in Home Assistant.
+
+- **Amazon can change it without notice.** If something stops working after an Amazon
+  update, [open an issue](https://github.com/willblaschko/alexa-organizer/issues).
+- **It's unofficial** and likely outside Amazon's terms of service. Use it on your own
+  account, at your own risk.
+- **Changes are real.** There's no undo button for Alexa — review the plan before you sync,
+  especially removals.
+
+## Power features & docs
+
+Every action is also a Home Assistant service. Dig in:
+
+- **[Services →](docs/ADVANCED.md#services)** — every action, callable from Developer Tools
+  or an automation.
+- **[The exposure policy →](docs/ADVANCED.md#the-exposure-policy)** — the full rules, labels,
+  and safety guard.
+- **[How it works →](docs/ADVANCED.md#how-it-works)** — where the data comes from and how
+  devices are matched up.
+- **[Troubleshooting →](docs/ADVANCED.md#troubleshooting)** — the usual suspects.
+
+---
+
+## Install (HACS custom repository)
+
+You'll need:
+
+- **Home Assistant Cloud (Nabu Casa)** with Alexa turned on — this is how devices reach Alexa.
+- **[Alexa Media Player](https://github.com/alandtse/alexa_media_player)** (recommended) or
+  the built-in **[Alexa Devices](https://www.home-assistant.io/integrations/alexa_devices/)**
+  integration, logged in — for rooms, speakers, and cleanup. Alexa Media Player also lets
+  the organizer match each Echo to its Home Assistant copy exactly.
+
+Then:
+
+1. In **HACS → ⋮ → Custom repositories**, add this repo with category **Integration**.
+2. Open **Alexa Organizer** and **Download** it, then **restart Home Assistant**.
+3. **Settings → Devices & Services → Add Integration → Alexa Organizer.**
+
+## Use
+
+Open **Alexa Organizer** in the sidebar. Look over your house as Alexa will see it, move or
+remove anything that's off, then **Review & Sync** — untick anything you don't want — and
+**Sync**. Come back any time something changes in Home Assistant.
+
+### Testing it?
+
+Thank you! The most useful reports:
+
+- **What looked wrong in the plan** before you synced (a device in the wrong room, a rename
+  you didn't expect, something suggested for removal that shouldn't be).
+- **Anything that failed during Sync** — which step, and the message.
+- Your setup: Echo models, speaker brands, rough number of rooms and devices.
+
+→ **[Open an issue](https://github.com/willblaschko/alexa-organizer/issues)**
+
+---
+
+## What's next
+
+- **Per-area light groups** — "turn on the kitchen" hits one group, not six bulbs.
+- **Rename any device** from the panel (Echos already follow their room).
+- Broader testing, then the **HACS default store**.
+
+---
+
+## How to support
+
+Alexa Organizer is free, and I'm not looking for donations. But if it saved you an
+afternoon in the Alexa app and you'd like to give back, please put it toward something that
+needs it more than I do:
+
+**❤ [Donate to the World Wildlife Fund →](https://protect.worldwildlife.org/)**
+
+---
 
 ## License
 
-AGPL-3.0.
+[GNU AGPL-3.0](LICENSE) — free to use, study, modify, and share. If you ship it (or run a
+modified version as a network service), you must release your source under the AGPL too. For
+home use this changes nothing. © 2026 Will Blaschko.

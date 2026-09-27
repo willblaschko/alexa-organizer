@@ -1,10 +1,10 @@
 {
   "domain": "alexa_organizer",
   "name": "Alexa Organizer",
+  "after_dependencies": ["alexa_devices", "alexa_media", "cloud"],
   "codeowners": ["@willblaschko"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "websocket_api"],
-  "after_dependencies": ["cloud", "alexa_media"],
   "documentation": "https://github.com/willblaschko/alexa-organizer",
   "integration_type": "hub",
   "iot_class": "calculated",
