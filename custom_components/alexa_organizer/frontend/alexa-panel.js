@@ -93,8 +93,8 @@ function e(e,t,o,r){var i,n=arguments.length,s=n<3?t:null===r?r=Object.getOwnPro
             <span class="kind">${o}</span>
             ${"ha_proxy"===e.speaker_note?I`<span
                   class="warnpill"
-                  title="This is a Home Assistant copy of the speaker — Alexa can't play to it, so it can't be a room's main. The natively-linked speaker (e.g. via the Sonos skill) is the one to use."
-                  >! not an Alexa speaker</span
+                  title="This is a copy of the speaker bridged from Home Assistant. Alexa can’t play music to the copy, so pick the matching speaker above (the real one) as the room’s main instead."
+                  >copy · can’t play here</span
                 >`:W}
             ${"ha"===e.source&&!1===e.exposed?I`<span class="reason">hidden</span>`:W}
             ${e.synced?W:I`<span class="reason">will sync to Alexa</span>`}

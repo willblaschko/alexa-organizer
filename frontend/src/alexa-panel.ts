@@ -547,8 +547,8 @@ export class AlexaPanel extends LitElement {
             ${d.speaker_note === "ha_proxy"
               ? html`<span
                   class="warnpill"
-                  title="This is a Home Assistant copy of the speaker — Alexa can't play to it, so it can't be a room's main. The natively-linked speaker (e.g. via the Sonos skill) is the one to use."
-                  >! not an Alexa speaker</span
+                  title="This is a copy of the speaker bridged from Home Assistant. Alexa can’t play music to the copy, so pick the matching speaker above (the real one) as the room’s main instead."
+                  >copy · can’t play here</span
                 >`
               : nothing}
             ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
