@@ -51,7 +51,6 @@ const kindIndex = (domain: string) => KIND_OF[domain] ?? KIND_GROUPS.length - 1;
 // Brand of an endpoint from its real manufacturer (not device_type — a Sonos linked via the
 // Sonos-Alexa skill carries an Amazon device_type yet is made by Sonos).
 const isAmazon = (d: { manufacturer?: string }) => (d.manufacturer ?? "").toLowerCase().includes("amazon");
-const brandOf = (d: { manufacturer?: string }) => (d.manufacturer ?? "").split(",")[0].trim(); // "Sonos, Inc." → "Sonos"
 
 @customElement("alexa-panel")
 export class AlexaPanel extends LitElement {
@@ -524,14 +523,12 @@ export class AlexaPanel extends LitElement {
   }
 
   private _previewDeviceRow(d: BoardDevice, room: BoardRoom): TemplateResult {
-    // Badge the honest brand. A device_type-bearing endpoint is "Echo" ONLY if Amazon made it;
-    // a Sonos linked via the Sonos-Alexa skill also carries a device_type but must read "Sonos".
+    // Badge the manufacturer Alexa reports, verbatim ("Amazon", "Sonos, Inc.", …) — no brand
+    // mapping. Only when it's blank do we fall back to the source-derived generic label.
     const chip =
       d.source === "ha"
         ? `HA · ${DOMAIN_CHIP[d.domain ?? ""] ?? d.domain ?? "HA"}`
-        : isAmazon(d)
-          ? "Echo"
-          : brandOf(d) || (d.source === "echo" ? "Echo" : "Alexa-only");
+        : d.manufacturer?.trim() || (d.source === "echo" ? "Echo" : "Alexa-only");
     // The device is rendered under its EFFECTIVE room, so the dropdown reflects that —
     // an HA-area room with no Alexa id yet uses its "#area#" sentinel value.
     const selected = room.id ?? (room.in_ha ? `#area#${room.name}` : "");
@@ -598,10 +595,15 @@ export class AlexaPanel extends LitElement {
     >();
     for (const d of devices) {
       let key: string, label: string, kind: string, order: number;
-      if (d.source === "echo" && isAmazon(d)) [key, label, kind, order] = ["echo", "Echo", "echo", 90];
-      else if (d.source === "echo") [key, label, kind, order] = ["speakers", "Speakers", "speakers", 89];
-      else if (d.source === "alexa") [key, label, kind, order] = ["alexa", "Alexa-only", "alexa", 91];
-      else {
+      if (d.source === "echo" || d.source === "alexa") {
+        // Section header = the reported manufacturer (verbatim), falling back to a generic
+        // label when blank. Color/order is the only thing keyed off "is it Amazon" — a hue
+        // choice, not a claim about the device's name.
+        label = d.manufacturer?.trim() || (d.source === "echo" ? "Echo" : "Alexa-only");
+        kind = isAmazon(d) ? "echo" : d.source === "echo" ? "speakers" : "alexa";
+        order = isAmazon(d) ? 90 : d.source === "echo" ? 89 : 91;
+        key = "brand:" + label;
+      } else {
         const i = d.domain ? kindIndex(d.domain) : KIND_GROUPS.length - 1;
         [key, label, kind, order] = ["k" + i, KIND_GROUPS[i].label, KIND_GROUPS[i].label.toLowerCase().split(" ")[0], i];
       }
