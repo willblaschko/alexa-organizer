@@ -26,7 +26,6 @@ export function laneOf(op: PlanOp): Lane {
     case "room_op":
       return a.op === "create" ? "create_room" : a.op === "rename" ? "rename_room" : "delete_room";
     case "move":
-    case "move_to_area":
       return "place";
     case "preferred":
       return "preferred";

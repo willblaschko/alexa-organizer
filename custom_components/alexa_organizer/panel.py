@@ -52,16 +52,8 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         ui["static"] = True
 
     if not ui.get("ws"):
-        websocket_api.async_register_command(hass, ws_inventory)
         websocket_api.async_register_command(hass, ws_set)
         websocket_api.async_register_command(hass, ws_apply)
-        websocket_api.async_register_command(hass, ws_alexa_devices)
-        websocket_api.async_register_command(hass, ws_room_plan)
-        websocket_api.async_register_command(hass, ws_device_rooms)
-        websocket_api.async_register_command(hass, ws_assign_plan)
-        websocket_api.async_register_command(hass, ws_smarthome_cleanup)
-        websocket_api.async_register_command(hass, ws_room_speakers)
-        websocket_api.async_register_command(hass, ws_board)
         websocket_api.async_register_command(hass, ws_plan)
         websocket_api.async_register_command(hass, ws_create_room)
         ui["ws"] = True
@@ -104,13 +96,6 @@ def _safe_inventory(hass: HomeAssistant) -> dict:
                 "unavailable": str(err)}
 
 
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/inventory"})
-@websocket_api.async_response
-async def ws_inventory(hass: HomeAssistant, connection, msg) -> None:
-    """Return the current exposure inventory (rows + preview summary)."""
-    connection.send_result(msg["id"], _safe_inventory(hass))
-
-
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
@@ -149,130 +134,6 @@ async def ws_apply(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(
         msg["id"], {"held": held, "before": before["summary"], "inventory": _safe_inventory(hass)}
     )
-
-
-# ── Experimental: Alexa-side device cleanup preview (piggybacks alexa_media_player) ──
-# READ-ONLY. The panel's Apply button calls the alexa_organizer.alexa_devices SERVICE
-# (apply: true) instead, so all the write logic stays in one place.
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/alexa_devices"})
-@websocket_api.async_response
-async def ws_alexa_devices(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: the full annotated device list (id, name, protected, suggested_remove)."""
-    from . import alexa_cloud
-
-    try:
-        endpoints = await alexa_cloud.async_list_endpoints(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    devices = sorted(alexa_cloud.annotate_devices(endpoints), key=lambda d: d["name"].lower())
-    connection.send_result(msg["id"], {"available": True, "devices": devices})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/room_plan"})
-@websocket_api.async_response
-async def ws_room_plan(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: the HA-areas → Alexa-rooms delta (create / rename / delete ops)."""
-    from . import alexa_cloud
-
-    try:
-        groups = await alexa_cloud.async_list_groups(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    ops = alexa_cloud.plan_room_sync(alexa_cloud.ha_area_names(hass), groups)
-    connection.send_result(msg["id"], {"available": True, "ops": ops})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/device_rooms"})
-@websocket_api.async_response
-async def ws_device_rooms(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: rooms + real devices with each device's current room (for the move UI)."""
-    from . import alexa_cloud
-
-    try:
-        data = await alexa_cloud.async_device_rooms(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    connection.send_result(msg["id"], {"available": True, **data})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/assign_plan"})
-@websocket_api.async_response
-async def ws_assign_plan(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: exposed HA devices → their HA-area's Alexa room (the assign suggestions)."""
-    from . import alexa_cloud
-
-    try:
-        plan = await alexa_cloud.async_assign_plan(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    assigns = [
-        {
-            "id": a["id"],
-            "name": a["name"],
-            "from_id": (a["from"] or {}).get("id"),
-            "from_name": (a["from"] or {}).get("name"),
-            "to_id": a["to"]["id"],
-            "to_name": a["to"]["name"],
-        }
-        for a in plan["assigns"]
-    ]
-    connection.send_result(
-        msg["id"],
-        {
-            "available": True,
-            "assigns": assigns,
-            "no_room": len(plan["area_has_no_room"]),
-            "unmatched": len(plan["unmatched"]),
-        },
-    )
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/smarthome_cleanup"})
-@websocket_api.async_response
-async def ws_smarthome_cleanup(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: duplicate / stray Alexa smart-home endpoints, with remove suggestions."""
-    from . import alexa_cloud
-
-    try:
-        candidates = await alexa_cloud.async_smarthome_cleanup(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    connection.send_result(msg["id"], {"available": True, "candidates": candidates})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/room_speakers"})
-@websocket_api.async_response
-async def ws_room_speakers(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: each room's preferred speaker + the speaker-capable members to pick from."""
-    from . import alexa_cloud
-
-    try:
-        rooms = await alexa_cloud.async_room_speakers(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    connection.send_result(msg["id"], {"available": True, "rooms": rooms})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/board"})
-@websocket_api.async_response
-async def ws_board(hass: HomeAssistant, connection, msg) -> None:
-    """Read-only: the whole aggregated board — rooms and source-tagged devices."""
-    from . import alexa_cloud
-
-    try:
-        board = await alexa_cloud.async_board(hass)
-    except alexa_cloud.AlexaCloudUnavailable as err:
-        connection.send_result(msg["id"], {"available": False, "reason": str(err)})
-        return
-    connection.send_result(msg["id"], {"available": True, **board})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "alexa_organizer/plan"})

@@ -39,13 +39,13 @@ export interface BoardData {
 // ── The one opinionated plan (mirrors the backend `assemble_plan` output) ──────
 
 export interface PlanAction {
-  kind: "expose" | "room_op" | "move" | "move_to_area" | "preferred" | "remove_device" | "remove_endpoint";
+  kind: "expose" | "room_op" | "move" | "preferred" | "remove_device" | "remove_endpoint";
   entity_id?: string;
   to?: boolean | string; // expose → bool; move → target room id
   from?: string | null;
   endpoint_id?: string;
   room_id?: string;
-  area?: string; // move_to_area → HA area name (room created if needed)
+  area?: string; // move → HA area name of the target room (created first if needed)
   op?: "create" | "rename" | "delete";
   id?: string;
   name?: string;
@@ -97,8 +97,8 @@ export function projectBoard(
     for (const o of g.ops) {
       if (!accepted.has(o.id)) continue;
       const a = o.action;
-      if ((a.kind === "move" || a.kind === "move_to_area") && a.endpoint_id) {
-        if (a.kind === "move" && a.to) idMoves[a.endpoint_id] = a.to as string;
+      if (a.kind === "move" && a.endpoint_id) {
+        if (a.to) idMoves[a.endpoint_id] = a.to as string;
         else if (a.area) areaMoves[a.endpoint_id] = norm(a.area);
         else idMoves[a.endpoint_id] = ""; // to no room (e.g. a vacuum pulled out)
       } else if ((a.kind === "remove_device" || a.kind === "remove_endpoint") && a.endpoint_id) {

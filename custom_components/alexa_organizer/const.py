@@ -16,10 +16,6 @@ ASSISTANT = "cloud.alexa"
 # where used (exposure.py) so this file stays HA-free; the string is stable.
 DATA_EXPOSED_ENTITIES = "homeassistant.exposed_entities"
 
-# Debounce window (seconds): bursts of registry events collapse into one
-# reconcile.
-DEBOUNCE_SECONDS = 5.0
-
 # Stability contract / fail-safe. If a single reconcile would UNEXPOSE more than
 # this many entities, we HOLD instead: a policy bug must never mass-unexpose and
 # drop devices out of their Alexa Groups. Tunable; deliberately small.
@@ -28,9 +24,6 @@ MAX_REMOVALS = 5
 # Debug service names.
 SERVICE_RECONCILE = "reconcile"  # force an apply now
 SERVICE_PREVIEW = "preview"  # dry-run: log/notify the diff, change nothing
-# Experimental (Alexa Room Sync): read-only proof that the alexa_media_player
-# piggyback works — lists the account's Alexa rooms. No writes.
-SERVICE_ALEXA_ROOMS = "alexa_rooms"
 # Experimental device cleanup: preview (default) or, with apply:true, deregister the
 # suggested-junk device registrations. Protected devices are never touched.
 SERVICE_ALEXA_DEVICES = "alexa_devices"
@@ -39,15 +32,10 @@ SERVICE_ALEXA_DEVICES = "alexa_devices"
 SERVICE_ROOM_OP = "room_op"
 # Experimental: move ONE device between Alexa rooms (per-move, for panel status).
 SERVICE_MOVE_DEVICE = "move_device"
-# Experimental read-only diagnostic: preview assigning exposed HA devices to their
-# HA-area's Alexa room (verifies the endpoint-to-HA name-mapping before wiring writes).
-SERVICE_ASSIGN_PREVIEW = "assign_preview"
 # Experimental: remove ONE Alexa smart-home endpoint (per-op, for panel status).
 SERVICE_FORGET_ENDPOINT = "forget_endpoint"
 # Experimental: set ONE room's preferred speaker (brand-agnostic — Echo/Sonos/etc.).
 SERVICE_SET_PREFERRED_SPEAKER = "set_preferred_speaker"
-# Experimental: place ONE device in its HA area's room, creating that room if needed.
-SERVICE_PLACE_IN_AREA = "place_in_area"
 # Read-only diagnostic (returns response): each room's current preferred speaker + candidates.
 SERVICE_ROOM_SPEAKERS = "room_speakers"
 # Debug (returns response): run an arbitrary GraphQL body against Alexa. Temporary.
@@ -77,11 +65,7 @@ TIER1_DOMAINS: frozenset[str] = frozenset(
 # `switch` is exposed only if it has an HA area — a room-scoped target — which
 # catches real room lights / light-switches and drops area-less junk (LED-indicator
 # switches, integration plumbing). Config/diagnostic entities are excluded first.
-LIGHT_DOMAIN = "light"
 AREA_SCOPED_DOMAINS: frozenset[str] = frozenset({"light", "switch"})
-
-# Tier 2 — off by default (a toggle once the Phase 2 UI exists).
-TIER2_DOMAINS: frozenset[str] = frozenset({"lock", "camera"})
 
 # Everything else (sensor, binary_sensor, number, button, event, automation,
 # update, select, input_*, device_tracker, weather, sun, person, …) is Tier 3:

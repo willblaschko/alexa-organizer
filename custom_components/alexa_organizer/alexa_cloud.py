@@ -56,11 +56,6 @@ def _alexa_devices_api(hass):
     return None
 
 
-def available(hass, email: str | None = None) -> bool:
-    """True if EITHER piggyback session is present (no network call)."""
-    return _alexa_devices_api(hass) is not None or _amp_login(hass, email) is not None
-
-
 async def _graphql_via_alexa_devices(hass, api, body: dict[str, Any]) -> Any:
     """Borrow the core integration's aiohttp session (cookies + csrf) for one POST."""
     hw = getattr(api, "_http_wrapper", None)
@@ -310,99 +305,10 @@ async def async_move_device(
         await _group_member(hass, to_room_id, endpoint_id, "ADD", email)
 
 
-async def async_move_to_area(
-    hass, endpoint_id: str, from_room_id: str | None, area_name: str, email: str | None = None
-) -> str:
-    """Place a device in its HA area's Alexa room, CREATING that room first if it doesn't
-    exist yet (dependencies first: the room must exist before the device can join it). Idempotent
-    — if the room already exists (incl. one created moments ago for a sibling device), it's reused.
-    Returns the room id used."""
-    groups = await async_list_groups(hass, email)
-    target = next((g["id"] for g in groups if _norm(_group_name(g)) == _norm(area_name)), None)
-    if not target:
-        target = await async_create_group(hass, area_name, email)
-    await async_move_device(hass, endpoint_id, from_room_id, target, email)
-    return target
-
-
-async def async_device_rooms(hass, email: str | None = None) -> dict:
-    """Rooms + real (kept) devices with each device's CURRENT room. Read-only.
-
-    Junk/protected device registrations are excluded — only the real devices worth
-    placing in a room are offered for assignment.
-    """
-    groups = await async_list_groups(hass, email)
-    endpoints = await async_list_endpoints(hass, email)
-
-    ep_room: dict[str, dict] = {}
-    for g in groups:
-        info = {"id": g["id"], "name": _group_name(g)}
-        for m in (g.get("memberDevices") or {}).get("items") or []:
-            if m.get("id"):
-                ep_room[m["id"]] = info
-
-    rooms = sorted(
-        ({"id": g["id"], "name": _group_name(g)} for g in groups), key=lambda r: r["name"].lower()
-    )
-    devices: list[dict] = []
-    for d in annotate_devices(endpoints):
-        if d["protected"] or d["suggested_remove"]:
-            continue
-        r = ep_room.get(d["id"])
-        current = r["id"] if r else None
-        suggested = _suggest_room(d["name"], rooms)
-        devices.append(
-            {
-                "id": d["id"],
-                "name": d["name"],
-                "room_id": current,
-                "room_name": r["name"] if r else None,
-                # A name-matched room to snap to, only when it differs from the current one.
-                "suggested_room_id": suggested if suggested and suggested != current else None,
-            }
-        )
-    devices.sort(key=lambda x: x["name"].lower())
-    return {"rooms": rooms, "devices": devices}
-
-
-async def async_board(hass, email: str | None = None) -> dict:
-    """The whole panel as ONE model: rooms (HA areas ∪ Alexa groups) and the devices in
-    them, each tagged with its source (ha / alexa / echo). Read-only.
-
-    Degrades gracefully — if HA exposure can't be read, the Alexa side still returns
-    (devices just won't carry HA matches).
-    """
-    from . import inventory
-    from .exposure import ExposureUnavailable
-
-    groups = await async_list_groups(hass, email)
-    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
-    endpoints = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
-
-    rows: list[dict] = []
-    try:
-        for r in inventory.build_inventory(hass)["rows"]:
-            names = [r.get("name")]
-            state = hass.states.get(r["entity_id"])
-            if state and state.attributes.get("friendly_name"):
-                names.append(state.attributes["friendly_name"])
-            rows.append({**r, "names": names})
-    except ExposureUnavailable:
-        pass
-
-    return build_board(rows, endpoints, groups)
-
-
 # Endpoint categories that can be a room's preferred speaker (brand-agnostic: Echos are
 # ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
 _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
 
-# Enum values verified live by introspection (the schema hides the type NAMES, so they're
-# inlined as literals; only the plain strings are variables):
-#   GroupEndpointSpeakerType       = ALEXA_DEVICE | BONDED_CLUSTER | MULTI_ROOM_MUSIC_CLUSTER
-#                                    | THIRD_PARTY | UNKNOWN   (Sonos = THIRD_PARTY)
-#   GroupPlayMusicTargetingTypeInput = ALWAYS | ONLY_WHEN_GROUP_NAME_IS_SPOKEN
-# (NB: the READ side reports the targeting as ALWAYS too. Our old PRIMARY/ALL_THE_TIME was wrong.)
 # Valid GroupEndpointSpeakerType enum values (verified live by introspection). The schema
 # hides the type NAME, so the value must be inlined as a LITERAL in the query text (a typed
 # variable "$t:GroupEndpointSpeakerType!" fails "Unknown type") — hence the string builder
@@ -526,57 +432,6 @@ async def async_forget_endpoint(hass, endpoint_id: str, email: str | None = None
     return (((node.get("data") or {}).get("forgetEndpoint") or {}).get("endpointId")) or ""
 
 
-async def async_smarthome_cleanup(hass, email: str | None = None) -> list[dict]:
-    """Opinionated cleanup candidates among Alexa smart-home endpoints. Read-only.
-
-    Candidates = DUPLICATE endpoints (2nd+ sharing a name — the confident cruft signal) and
-    STRAY endpoints (name doesn't match any live exposed HA entity). A matched, first-of-its-
-    name endpoint is the real device and is NOT listed. Only duplicates are suggested for
-    removal by default; strays are shown but left for the user to opt in (they may be
-    other-source devices we can't judge — no HA back-reference exists).
-    """
-    from . import inventory
-
-    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
-    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
-
-    ha_names: set[str] = set()
-    try:
-        for r in inventory.build_inventory(hass)["rows"]:
-            if r.get("ghost") or not (r.get("desired") or r.get("exposed")):
-                continue
-            ha_names.add(str(r["name"]).strip().lower())
-            state = hass.states.get(r["entity_id"])
-            if state and state.attributes.get("friendly_name"):
-                ha_names.add(str(state.attributes["friendly_name"]).strip().lower())
-    except AlexaCloudUnavailable:
-        pass
-
-    seen: set[str] = set()
-    out: list[dict] = []
-    for e in eps:
-        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
-        if dms and (((dms.get("deviceType") or {}).get("value") or {}).get("text")):
-            continue  # an Amazon device — handled by the device cleanup
-        name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or ""
-        key = name.strip().lower()
-        duplicate = key in seen
-        seen.add(key)
-        matched = key in ha_names
-        if not duplicate and matched:
-            continue  # the real, first-seen HA device — leave it
-        out.append(
-            {
-                "id": e["id"],
-                "name": name,
-                "duplicate": duplicate,
-                "matched": matched,
-                "suggested_remove": duplicate,  # confident signal only
-            }
-        )
-    return out
-
-
 def _suggest_room(name: str, rooms: list[dict]) -> str | None:
     """The room whose name the device name starts with (longest wins) — 'Kitchen Echo' → Kitchen."""
     ln = name.lower()
@@ -587,91 +442,6 @@ def _suggest_room(name: str, rooms: list[dict]) -> str | None:
         if (ln == rn or ln.startswith(rn + " ")) and len(rn) > best_len:
             best_id, best_len = r["id"], len(rn)
     return best_id
-
-
-async def async_assign_plan(hass, email: str | None = None) -> dict:
-    """Plan assigning EXPOSED HA devices to their HA-area's Alexa room (HA = truth). Read-only.
-
-    Maps each Alexa smart-home endpoint (the exposed HA entities — those WITHOUT an Amazon
-    deviceType) to an HA entity by friendly name → its HA area → that area's Alexa room, and
-    stages an assign where the endpoint isn't already there. Returns the plan + match stats so
-    we can confirm the name-mapping before wiring any writes.
-    """
-    from . import inventory, policy
-
-    groups = await async_list_groups(hass, email)
-    node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
-    eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
-
-    ep_room: dict[str, dict] = {}
-    rooms_by_norm: dict[str, dict] = {}
-    for g in groups:
-        info = {"id": g["id"], "name": _group_name(g)}
-        rooms_by_norm[_group_name(g).strip().lower()] = info
-        for m in (g.get("memberDevices") or {}).get("items") or []:
-            if m.get("id"):
-                ep_room[m["id"]] = info
-
-    # HA exposed entity → area (the truth we snap Alexa to). Key on BOTH the registry name
-    # and the live friendly_name (what HA actually sends Alexa), since Alexa shows the latter.
-    ha_area: dict[str, str] = {}
-    try:
-        for r in inventory.build_inventory(hass)["rows"]:
-            if not (r.get("area") and (r.get("desired") or r.get("exposed")) and not r.get("ghost")):
-                continue
-            keys = {str(r["name"]).strip().lower()}
-            state = hass.states.get(r["entity_id"])
-            if state:
-                friendly = state.attributes.get("friendly_name")
-                if friendly:
-                    keys.add(str(friendly).strip().lower())
-            for key in keys:
-                if key:
-                    ha_area[key] = r["area"]
-    except AlexaCloudUnavailable:
-        pass
-
-    # Live HA entity_ids, to tell an orphaned HA exposure from an other-source device.
-    live_ids = policy.live_entity_ids(hass)
-
-    assigns: list[dict] = []
-    unmatched: list[dict] = []
-    no_room: list[str] = []
-    for e in eps:
-        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier")
-        if dms and (((dms.get("deviceType") or {}).get("value") or {}).get("text")):
-            continue  # an Amazon device (Echo/app) — handled by the device-move UI
-        name = ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or ""
-        chrs = (((e.get("legacyIdentifiers") or {}).get("chrsIdentifier") or {}).get("entityId")) or ""
-        area = ha_area.get(name.strip().lower())
-        if not area:
-            # Not matched by name. Is chrsIdentifier an HA entity_id? If so, is it still live?
-            looks_ha = "." in chrs and chrs.split(".")[0].islower()
-            unmatched.append(
-                {
-                    "id": e["id"],
-                    "name": name,
-                    "chrs": chrs,
-                    "ha_shaped": looks_ha,
-                    "ha_orphan": looks_ha and chrs not in live_ids,
-                }
-            )
-            continue
-        desired = rooms_by_norm.get(area.strip().lower())
-        if not desired:
-            no_room.append(f"{name} → {area}")  # area has no Alexa room yet (room sync makes it)
-            continue
-        cur = ep_room.get(e["id"])
-        if cur and cur["id"] == desired["id"]:
-            continue  # already in the right room
-        assigns.append({"id": e["id"], "name": name, "from": cur, "to": desired})
-
-    return {
-        "assigns": assigns,
-        "exposed_with_area": len(ha_area),
-        "unmatched": unmatched,
-        "area_has_no_room": no_room,
-    }
 
 
 # ── Device registrations (Echos, phantom app installs, …) ────────────────────

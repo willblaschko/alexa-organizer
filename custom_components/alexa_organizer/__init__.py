@@ -21,12 +21,9 @@ from .const import (
     DOMAIN,
     MAX_REMOVALS,
     SERVICE_ALEXA_DEVICES,
-    SERVICE_ALEXA_ROOMS,
-    SERVICE_ASSIGN_PREVIEW,
     SERVICE_FORGET_ENDPOINT,
     SERVICE_MOVE_DEVICE,
     SERVICE_PREVIEW,
-    SERVICE_PLACE_IN_AREA,
     SERVICE_RECONCILE,
     SERVICE_ROOM_OP,
     SERVICE_ROOM_SPEAKERS,
@@ -40,14 +37,11 @@ _LOGGER = logging.getLogger(__name__)
 _ALL_SERVICES = (
     SERVICE_RECONCILE,
     SERVICE_PREVIEW,
-    SERVICE_ALEXA_ROOMS,
     SERVICE_ALEXA_DEVICES,
     SERVICE_ROOM_OP,
     SERVICE_MOVE_DEVICE,
-    SERVICE_ASSIGN_PREVIEW,
     SERVICE_FORGET_ENDPOINT,
     SERVICE_SET_PREFERRED_SPEAKER,
-    SERVICE_PLACE_IN_AREA,
     SERVICE_ROOM_SPEAKERS,
     SERVICE_DEBUG_GRAPHQL,
 )
@@ -106,39 +100,6 @@ def _register_services(hass: HomeAssistant) -> None:
             engine.describe(diff),
             title="Alexa Organizer — preview",
             notification_id="alexa_organizer_preview",
-        )
-
-    async def alexa_rooms(_call: ServiceCall) -> None:
-        # EXPERIMENTAL read-only: prove the alexa_media_player piggyback by listing
-        # the account's Alexa rooms. No writes.
-        from . import alexa_cloud
-
-        from homeassistant.components import persistent_notification
-
-        try:
-            groups = await alexa_cloud.async_list_groups(hass)
-        except alexa_cloud.AlexaCloudUnavailable as err:
-            persistent_notification.async_create(
-                hass,
-                f"Alexa Room Sync (experimental) couldn't reach Alexa: {err}. "
-                "It needs the Alexa Media Player integration installed and logged in.",
-                title="Alexa Organizer — Alexa rooms",
-                notification_id="alexa_organizer_rooms",
-            )
-            return
-
-        def _name(g: dict) -> str:
-            return ((g.get("friendlyName") or {}).get("value") or {}).get("text", "(unnamed)")
-
-        def _count(g: dict) -> int:
-            return len((g.get("memberDevices") or {}).get("items") or [])
-
-        lines = sorted(f"• {_name(g)} — {_count(g)} device(s)" for g in groups)
-        persistent_notification.async_create(
-            hass,
-            f"{len(groups)} Alexa rooms (read-only, via Alexa Media Player):\n" + "\n".join(lines),
-            title="Alexa Organizer — Alexa rooms",
-            notification_id="alexa_organizer_rooms",
         )
 
     async def alexa_devices(call: ServiceCall) -> None:
@@ -216,7 +177,7 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({vol.Optional("max_removals"): vol.All(vol.Coerce(int), vol.Range(min=0))}),
     )
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW, preview)
-    hass.services.async_register(DOMAIN, SERVICE_ALEXA_ROOMS, alexa_rooms)
+
     async def room_op(call: ServiceCall) -> None:
         # Apply ONE room op; the panel calls this per op to show per-op status.
         from . import alexa_cloud
@@ -321,27 +282,6 @@ def _register_services(hass: HomeAssistant) -> None:
         ),
     )
 
-    async def place_in_area(call: ServiceCall) -> None:
-        from . import alexa_cloud
-
-        from homeassistant.exceptions import HomeAssistantError
-
-        try:
-            await alexa_cloud.async_move_to_area(
-                hass, call.data["endpoint_id"], call.data.get("from"), call.data["area"]
-            )
-        except alexa_cloud.AlexaCloudUnavailable as err:
-            raise HomeAssistantError(str(err)) from err
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_PLACE_IN_AREA,
-        place_in_area,
-        schema=vol.Schema(
-            {vol.Required("endpoint_id"): str, vol.Required("area"): str, vol.Optional("from"): str}
-        ),
-    )
-
     async def room_speakers(_call: ServiceCall) -> dict:
         # READ-ONLY diagnostic, returns response: each room's preferred speaker + candidates.
         from . import alexa_cloud
@@ -378,42 +318,3 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({vol.Required("query"): str, vol.Optional("variables"): dict}),
         supports_response=SupportsResponse.ONLY,
     )
-
-    async def assign_preview(_call: ServiceCall) -> None:
-        # READ-ONLY diagnostic: does the exposed-HA-device → area's-room mapping land?
-        from . import alexa_cloud
-
-        from homeassistant.components import persistent_notification
-
-        try:
-            plan = await alexa_cloud.async_assign_plan(hass)
-        except alexa_cloud.AlexaCloudUnavailable as err:
-            persistent_notification.async_create(
-                hass, f"Couldn't reach Alexa: {err}.", title="Alexa Organizer — assign preview",
-                notification_id="alexa_organizer_assign",
-            )
-            return
-        assigns = plan["assigns"]
-        sample = "\n".join(
-            f"• {a['name']}: {(a['from'] or {}).get('name', '(unassigned)')} → {a['to']['name']}"
-            for a in assigns[:20]
-        )
-        no_room = plan["area_has_no_room"]
-        unmatched = plan["unmatched"]
-        orphans = [u for u in unmatched if u["ha_orphan"]]
-        other = [u for u in unmatched if not u["ha_orphan"]]
-        orphan_s = "\n".join(f"   - {o['name']}  [{o['chrs']}]" for o in orphans[:15]) or "   (none)"
-        other_s = "\n".join(f"   - {o['name']}  [{o['chrs'] or 'no chrs id'}]" for o in other[:15])
-        msg = (
-            f"ASSIGN — {len(assigns)} exposed devices to their area's room "
-            f"(of {plan['exposed_with_area']} matched to an area):\n{sample}\n\n"
-            f"NO ROOM YET — {len(no_room)} matched an area with no Alexa room (room sync creates it first).\n\n"
-            f"UNMATCHED — {len(unmatched)} smart-home endpoints didn't name-match a live HA entity:\n"
-            f"  DELETABLE orphans ({len(orphans)}) — chrsId is an HA entity_id that's GONE from HA:\n{orphan_s}\n"
-            f"  KEEP ({len(other)}) — other-source or name-drift:\n{other_s}"
-        )
-        persistent_notification.async_create(
-            hass, msg, title="Alexa Organizer — assign preview", notification_id="alexa_organizer_assign"
-        )
-
-    hass.services.async_register(DOMAIN, SERVICE_ASSIGN_PREVIEW, assign_preview)

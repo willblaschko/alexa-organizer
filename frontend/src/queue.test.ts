@@ -15,7 +15,7 @@ test("laneOf maps each op kind to its dependency lane", () => {
     [{ kind: "room_op", op: "rename", id: "g1", name: "Den" }, "rename_room"],
     [{ kind: "room_op", op: "delete", id: "g1" }, "delete_room"],
     [{ kind: "move", endpoint_id: "e1", to: "g1" }, "place"],
-    [{ kind: "move_to_area", endpoint_id: "e1", area: "Den" }, "place"],
+    [{ kind: "move", endpoint_id: "e2", area: "Den" }, "place"], // move by area name → still place lane
     [{ kind: "preferred", room_id: "g1", endpoint_id: "e1" }, "preferred"],
     [{ kind: "remove_device", endpoint_id: "e1" }, "remove"],
     [{ kind: "remove_endpoint", endpoint_id: "e1" }, "remove"],

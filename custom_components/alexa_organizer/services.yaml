@@ -15,10 +15,6 @@ preview:
   name: Preview Alexa exposure changes
   description: Dry run — compute what would be exposed/unexposed to Alexa and report it (log + a notification) without changing anything. Use this before the first apply to confirm it's a near-no-op against your current set.
 
-alexa_rooms:
-  name: List Alexa rooms (experimental)
-  description: EXPERIMENTAL, read-only — lists the account's Alexa device groups (rooms) by borrowing the Alexa Media Player or Alexa Devices session. Requires one of those installed and logged in. Makes no changes.
-
 room_op:
   name: Apply one Alexa room op (experimental)
   description: EXPERIMENTAL — create, rename, or delete a single Alexa room. Called per-op by the panel so it can show per-op status. Requires an Alexa session (Alexa Devices or Alexa Media Player).
@@ -56,10 +52,6 @@ move_device:
       selector:
         text:
 
-assign_preview:
-  name: Preview device→room assignments (experimental)
-  description: EXPERIMENTAL, read-only — reports which exposed HA devices would snap into their HA-area's Alexa room (matched by name), plus how many endpoints didn't match. Makes no changes.
-
 forget_endpoint:
   name: Remove one Alexa smart-home endpoint (experimental)
   description: EXPERIMENTAL — remove a single Alexa smart-home endpoint by id (a duplicate or stray). Called per-op by the panel's cleanup list.
@@ -82,25 +74,6 @@ set_preferred_speaker:
     endpoint_id:
       name: Speaker endpoint id
       required: true
-      selector:
-        text:
-
-place_in_area:
-  name: Place a device in its Home Assistant area's room (experimental)
-  description: EXPERIMENTAL — put one device into the Alexa room matching a Home Assistant area, creating that room first if it doesn't exist yet (dependencies first). Called per-device by the panel.
-  fields:
-    endpoint_id:
-      name: Endpoint id
-      required: true
-      selector:
-        text:
-    area:
-      name: Home Assistant area name
-      required: true
-      selector:
-        text:
-    from:
-      name: From room id
       selector:
         text:
 
