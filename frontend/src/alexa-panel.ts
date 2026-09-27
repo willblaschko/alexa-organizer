@@ -48,6 +48,11 @@ const KIND_OF: Record<string, number> = {};
 KIND_GROUPS.forEach((g, i) => g.domains.forEach((d) => (KIND_OF[d] = i)));
 const kindIndex = (domain: string) => KIND_OF[domain] ?? KIND_GROUPS.length - 1;
 
+// Brand of an endpoint from its real manufacturer (not device_type — a Sonos linked via the
+// Sonos-Alexa skill carries an Amazon device_type yet is made by Sonos).
+const isAmazon = (d: { manufacturer?: string }) => (d.manufacturer ?? "").toLowerCase().includes("amazon");
+const brandOf = (d: { manufacturer?: string }) => (d.manufacturer ?? "").split(",")[0].trim(); // "Sonos, Inc." → "Sonos"
+
 @customElement("alexa-panel")
 export class AlexaPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -519,12 +524,14 @@ export class AlexaPanel extends LitElement {
   }
 
   private _previewDeviceRow(d: BoardDevice, room: BoardRoom): TemplateResult {
+    // Badge the honest brand. A device_type-bearing endpoint is "Echo" ONLY if Amazon made it;
+    // a Sonos linked via the Sonos-Alexa skill also carries a device_type but must read "Sonos".
     const chip =
       d.source === "ha"
         ? `HA · ${DOMAIN_CHIP[d.domain ?? ""] ?? d.domain ?? "HA"}`
-        : d.source === "echo"
+        : isAmazon(d)
           ? "Echo"
-          : "Alexa-only";
+          : brandOf(d) || (d.source === "echo" ? "Echo" : "Alexa-only");
     // The device is rendered under its EFFECTIVE room, so the dropdown reflects that —
     // an HA-area room with no Alexa id yet uses its "#area#" sentinel value.
     const selected = room.id ?? (room.in_ha ? `#area#${room.name}` : "");
@@ -591,7 +598,8 @@ export class AlexaPanel extends LitElement {
     >();
     for (const d of devices) {
       let key: string, label: string, kind: string, order: number;
-      if (d.source === "echo") [key, label, kind, order] = ["echo", "Echo", "echo", 90];
+      if (d.source === "echo" && isAmazon(d)) [key, label, kind, order] = ["echo", "Echo", "echo", 90];
+      else if (d.source === "echo") [key, label, kind, order] = ["speakers", "Speakers", "speakers", 89];
       else if (d.source === "alexa") [key, label, kind, order] = ["alexa", "Alexa-only", "alexa", 91];
       else {
         const i = d.domain ? kindIndex(d.domain) : KIND_GROUPS.length - 1;

@@ -653,6 +653,10 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             "suggested_remove": False,
             "source": "alexa",
             "area": None,
+            # Real manufacturer (e.g. "Sonos, Inc.", "Amazon", "Home Assistant") — the honest
+            # brand for the UI badge. A Sonos linked via the Sonos-Alexa skill carries an Amazon
+            # device_type (so source=="echo"), so device_type/source can't name the brand; this can.
+            "manufacturer": e.get("manufacturer") or "",
         }
         if e["device_type"] is not None:
             fl = acct_flags.get(e["id"], {})
