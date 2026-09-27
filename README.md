@@ -1,10 +1,12 @@
-# Alexa Organizer
+<p align="center">
+  <img src="docs/images/banner.png" alt="Alexa Organizer — Your house, in Alexa. Review the plan. Tap Sync. Alexa matches Home Assistant." width="100%">
+</p>
 
-**Your house, in Alexa.** — one review, one tap, and Alexa matches Home Assistant.
-
-[![Validate](https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml/badge.svg)](https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml"><img src="https://github.com/willblaschko/alexa-organizer/actions/workflows/validate.yml/badge.svg" alt="Validate"></a>
+  <a href="https://hacs.xyz/docs/faq/custom_repositories"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL v3"></a>
+</p>
 
 Alexa Organizer makes **Home Assistant the source of truth for Alexa**. It looks at your
 areas and devices, works out how Alexa *should* look — which devices it sees, which rooms
@@ -12,16 +14,40 @@ exist, what's in each room, which speaker plays music — and shows you the diff
 it, hit **Sync**, done. No more afternoons in the Alexa app dragging devices around, deleting
 "Media Room 3", or wondering why "turn on the office" stopped working.
 
-- **Home-Assistant-first.** Your areas become Alexa's rooms; every device lands in its room.
-  Rename or rearrange in HA, and Alexa follows on the next sync.
-- **Opinionated, so you don't have to be.** Only real voice targets reach Alexa — lights,
-  speakers, climate, scenes, covers, fans. Sensors, buttons, and config toggles never do.
-- **One device, one row.** An Echo or Sonos that Home Assistant *also* sends to Alexa shows
-  up once, and moving or removing it takes every copy along.
-- **Speakers that play where you are.** Pick each room's main speaker — Echo or Sonos — and
-  "play music" in that room plays there.
-- **Staged, not surprising.** Arrange freely; nothing changes in Alexa until you review the
-  plan and hit **Sync**. Nothing runs in the background.
+<p align="center">
+  <img src="docs/images/before-after.png" alt="Before: Alexa's device list full of duplicates, raw ids, phone-app junk and devices in the wrong room. After one sync: tidy rooms with their lights and speakers, and 'Alexa matches your house'." width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/images/steps.png" alt="1 Look — see your house the way Alexa will see it. 2 Tweak — move, remove, rename, pick each room's speaker. 3 Sync — review the plan, tap Sync." width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/icon-rooms.png" width="56" alt=""><br>
+      <b>Your areas become Alexa's rooms</b><br>
+      Every device lands in its room. Rearrange in Home Assistant and Alexa follows on the next sync.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/icon-speakers.png" width="56" alt=""><br>
+      <b>Speakers that play where you are</b><br>
+      Pick each room's main speaker — Echo or Sonos — and "play music" in that room plays there.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/icon-one-device.png" width="56" alt=""><br>
+      <b>One device, one row</b><br>
+      An Echo or Sonos that Home Assistant <i>also</i> sends to Alexa shows up once, and every action takes all its copies along.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/icon-cleanup.png" width="56" alt=""><br>
+      <b>Only real voice targets</b><br>
+      Lights, speakers, climate, scenes. Never sensors, buttons, or old phone-app junk — and nothing changes until you hit <b>Sync</b>.
+    </td>
+  </tr>
+</table>
 
 **Install:** HACS → ⋮ → *Custom repositories* → add this repo as an **Integration** →
 Download → restart Home Assistant → add the **Alexa Organizer** integration.
@@ -30,20 +56,6 @@ Download → restart Home Assistant → add the **Alexa Organizer** integration.
 > **Beta.** This runs on one real house so far and is looking for testers. The room and
 > speaker features use Alexa's private API — read [the heads-up](#heads-up) before you sync.
 > A sibling to [Chorus](https://github.com/willblaschko/chorus).
-
-## The idea
-
-```mermaid
-flowchart TD
-  H["🏠 Home Assistant<br/>your areas + devices"]:::src
-  H --> O["Alexa Organizer<br/>works out how Alexa should look"]:::hub
-  O --> E["Only real voice targets<br/>reach Alexa"]:::out
-  O --> R["Rooms = your areas,<br/>every device in its room"]:::out
-  O --> S["Each room's main speaker<br/>plays when you say 'play music'"]:::out
-  classDef src fill:#334155,stroke:#64748b,color:#f1f5f9
-  classDef hub fill:#2563eb,stroke:#93c5fd,color:#ffffff,font-weight:bold
-  classDef out fill:#6d28d9,stroke:#c4b5fd,color:#ffffff
-```
 
 ---
 

@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940">
+<rect width="1600" height="940" rx="40" fill="#0d1628"/>
+<text x="56" y="78" font-family="Avenir Next" font-size="22" font-weight="700" fill="#8a93b0" text-anchor="start" letter-spacing="3">ALEXA, TODAY</text>
+<rect x="56" y="110" width="600" height="774" rx="26" fill="#141f38" />
+<text x="92" y="180" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Living Room 2</text>
+<rect x="494.55" y="159" width="125.45" height="30" rx="15" fill="#e0707f" fill-opacity=".16" stroke="#e0707f" stroke-opacity=".5"/>
+<text x="557.275" y="179" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0707f" text-anchor="middle">duplicate</text>
+<line x1="92" y1="204" x2="620" y2="204" stroke="#26324f"/>
+<text x="92" y="246" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Living Room 3</text>
+<rect x="494.55" y="225" width="125.45" height="30" rx="15" fill="#e0707f" fill-opacity=".16" stroke="#e0707f" stroke-opacity=".5"/>
+<text x="557.275" y="245" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0707f" text-anchor="middle">duplicate</text>
+<line x1="92" y1="270" x2="620" y2="270" stroke="#26324f"/>
+<text x="92" y="312" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">light.hallway_lamp_2</text>
+<rect x="527.7" y="291" width="92.3" height="30" rx="15" fill="#e0a441" fill-opacity=".16" stroke="#e0a441" stroke-opacity=".5"/>
+<text x="573.85" y="311" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0a441" text-anchor="middle">raw id</text>
+<line x1="92" y1="336" x2="620" y2="336" stroke="#26324f"/>
+<text x="92" y="378" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Pixel 7 Alexa App</text>
+<rect x="549.8" y="357" width="70.2" height="30" rx="15" fill="#e0707f" fill-opacity=".16" stroke="#e0707f" stroke-opacity=".5"/>
+<text x="584.9" y="377" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0707f" text-anchor="middle">junk</text>
+<line x1="92" y1="402" x2="620" y2="402" stroke="#26324f"/>
+<text x="92" y="444" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Kitchen Echo Dot</text>
+<rect x="516.65" y="423" width="103.35000000000001" height="30" rx="15" fill="#e0a441" fill-opacity=".16" stroke="#e0a441" stroke-opacity=".5"/>
+<text x="568.3249999999999" y="443" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0a441" text-anchor="middle">no room</text>
+<line x1="92" y1="468" x2="620" y2="468" stroke="#26324f"/>
+<text x="92" y="510" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Office Echo</text>
+<rect x="483.5" y="489" width="136.5" height="30" rx="15" fill="#e0a441" fill-opacity=".16" stroke="#e0a441" stroke-opacity=".5"/>
+<text x="551.75" y="509" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0a441" text-anchor="middle">wrong room</text>
+<line x1="92" y1="534" x2="620" y2="534" stroke="#26324f"/>
+<text x="92" y="576" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Living Room</text>
+<rect x="549.8" y="555" width="70.2" height="30" rx="15" fill="#e0707f" fill-opacity=".16" stroke="#e0707f" stroke-opacity=".5"/>
+<text x="584.9" y="575" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0707f" text-anchor="middle">copy</text>
+<line x1="92" y1="600" x2="620" y2="600" stroke="#26324f"/>
+<text x="92" y="642" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Garage Light</text>
+<rect x="516.65" y="621" width="103.35000000000001" height="30" rx="15" fill="#e0a441" fill-opacity=".16" stroke="#e0a441" stroke-opacity=".5"/>
+<text x="568.3249999999999" y="641" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0a441" text-anchor="middle">no room</text>
+<line x1="92" y1="666" x2="620" y2="666" stroke="#26324f"/>
+<text x="92" y="708" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Porch Motion Switch</text>
+<rect x="549.8" y="687" width="70.2" height="30" rx="15" fill="#e0707f" fill-opacity=".16" stroke="#e0707f" stroke-opacity=".5"/>
+<text x="584.9" y="707" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0707f" text-anchor="middle">junk</text>
+<line x1="92" y1="732" x2="620" y2="732" stroke="#26324f"/>
+<text x="92" y="774" font-family="Menlo" font-size="26" font-weight="400" fill="#e8ecf6" text-anchor="start">Den Sonos</text>
+<rect x="483.5" y="753" width="136.5" height="30" rx="15" fill="#e0a441" fill-opacity=".16" stroke="#e0a441" stroke-opacity=".5"/>
+<text x="551.75" y="773" font-family="Avenir Next" font-size="17" font-weight="700" fill="#e0a441" text-anchor="middle">won't play</text>
+<line x1="92" y1="798" x2="620" y2="798" stroke="#26324f"/>
+<text x="92" y="844" font-family="Menlo" font-size="24" font-weight="500" fill="#8a93b0" text-anchor="start">+ 214 more…</text>
+<path d="M682 497.0 H902" stroke="#1fc6c4" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 12"/>
+<path d="M888 483.0 L908 497.0 L888 511.0" fill="none" stroke="#1fc6c4" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="704" y="419.0" width="176" height="44" rx="22" fill="#1fc6c4" />
+<text x="792" y="448.0" font-family="Avenir Next" font-size="20" font-weight="700" fill="#0d1628" text-anchor="middle">Review &amp; Sync</text>
+<text x="792" y="543.0" font-family="Avenir Next" font-size="20" font-weight="500" fill="#8a93b0" text-anchor="middle">one tap</text>
+<text x="932" y="78" font-family="Avenir Next" font-size="22" font-weight="700" fill="#1fc6c4" text-anchor="start" letter-spacing="3">AFTER ONE SYNC</text>
+<rect x="932" y="110" width="612" height="342" rx="26" fill="#141f38" />
+<text x="962" y="160" font-family="Avenir Next" font-size="31" font-weight="700" fill="#e8ecf6" text-anchor="start">Living Room</text>
+<text x="962" y="208" font-family="Avenir Next" font-size="16" font-weight="700" fill="#e0a441" text-anchor="start" letter-spacing="2">LIGHTING</text>
+<line x1="962" y1="219" x2="1514" y2="219" stroke="#e0a441" stroke-opacity=".45" stroke-width="2"/>
+<text x="962" y="256" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Floor Lamp</text>
+<text x="962" y="314" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Ceiling Lights</text>
+<text x="962" y="372" font-family="Avenir Next" font-size="16" font-weight="700" fill="#4a86ff" text-anchor="start" letter-spacing="2">SPEAKERS</text>
+<line x1="962" y1="383" x2="1514" y2="383" stroke="#4a86ff" stroke-opacity=".45" stroke-width="2"/>
+<text x="962" y="420" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Living Room</text>
+<text x="1110.2" y="420" font-family="Avenir Next" font-size="17" font-weight="500" fill="#8a93b0" text-anchor="start">Sonos</text>
+<text x="1514" y="420" font-family="Avenir Next" font-size="18" font-weight="700" fill="#4a86ff" text-anchor="end">♪ plays here</text>
+<rect x="932" y="476" width="294.0" height="284" rx="26" fill="#141f38" />
+<text x="962" y="526" font-family="Avenir Next" font-size="31" font-weight="700" fill="#e8ecf6" text-anchor="start">Kitchen</text>
+<text x="962" y="574" font-family="Avenir Next" font-size="16" font-weight="700" fill="#4a86ff" text-anchor="start" letter-spacing="2">SPEAKERS</text>
+<line x1="962" y1="585" x2="1196.0" y2="585" stroke="#4a86ff" stroke-opacity=".45" stroke-width="2"/>
+<text x="962" y="622" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Kitchen Echo Dot</text>
+<text x="1196.0" y="622" font-family="Avenir Next" font-size="18" font-weight="700" fill="#4a86ff" text-anchor="end">♪</text>
+<text x="962" y="680" font-family="Avenir Next" font-size="16" font-weight="700" fill="#e0a441" text-anchor="start" letter-spacing="2">LIGHTING</text>
+<line x1="962" y1="691" x2="1196.0" y2="691" stroke="#e0a441" stroke-opacity=".45" stroke-width="2"/>
+<text x="962" y="728" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Pendants</text>
+<rect x="1250.0" y="476" width="294.0" height="284" rx="26" fill="#141f38" />
+<text x="1280.0" y="526" font-family="Avenir Next" font-size="31" font-weight="700" fill="#e8ecf6" text-anchor="start">Office</text>
+<text x="1280.0" y="574" font-family="Avenir Next" font-size="16" font-weight="700" fill="#4a86ff" text-anchor="start" letter-spacing="2">SPEAKERS</text>
+<line x1="1280.0" y1="585" x2="1514.0" y2="585" stroke="#4a86ff" stroke-opacity=".45" stroke-width="2"/>
+<text x="1280.0" y="622" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Office Echo</text>
+<text x="1514.0" y="622" font-family="Avenir Next" font-size="18" font-weight="700" fill="#4a86ff" text-anchor="end">♪</text>
+<text x="1280.0" y="680" font-family="Avenir Next" font-size="16" font-weight="700" fill="#1fc6c4" text-anchor="start" letter-spacing="2">CLIMATE</text>
+<line x1="1280.0" y1="691" x2="1514.0" y2="691" stroke="#1fc6c4" stroke-opacity=".45" stroke-width="2"/>
+<text x="1280.0" y="728" font-family="Avenir Next" font-size="23" font-weight="500" fill="#e8ecf6" text-anchor="start">Thermostat</text>
+<rect x="932" y="784" width="612" height="100" rx="26" fill="#1fc6c4" fill-opacity=".12" stroke="#1fc6c4" stroke-opacity=".55" stroke-width="2"/>
+<text x="966" y="845.0" font-family="Avenir Next" font-size="30" font-weight="700" fill="#1fc6c4" text-anchor="start">✓  Alexa matches your house</text>
+<text x="1510" y="843.0" font-family="Avenir Next" font-size="22" font-weight="600" fill="#8a93b0" text-anchor="end">0 changes</text>
+</svg>
