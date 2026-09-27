@@ -13,7 +13,7 @@ import logging
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 
 from . import engine, exposure
 from .const import (
@@ -29,6 +29,7 @@ from .const import (
     SERVICE_PLACE_IN_AREA,
     SERVICE_RECONCILE,
     SERVICE_ROOM_OP,
+    SERVICE_ROOM_SPEAKERS,
     SERVICE_SET_PREFERRED_SPEAKER,
 )
 from .panel import async_register_panel, async_unregister_panel
@@ -46,6 +47,7 @@ _ALL_SERVICES = (
     SERVICE_FORGET_ENDPOINT,
     SERVICE_SET_PREFERRED_SPEAKER,
     SERVICE_PLACE_IN_AREA,
+    SERVICE_ROOM_SPEAKERS,
 )
 
 
@@ -336,6 +338,22 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {vol.Required("endpoint_id"): str, vol.Required("area"): str, vol.Optional("from"): str}
         ),
+    )
+
+    async def room_speakers(_call: ServiceCall) -> dict:
+        # READ-ONLY diagnostic, returns response: each room's preferred speaker + candidates.
+        from . import alexa_cloud
+
+        try:
+            return {"available": True, "rooms": await alexa_cloud.async_room_speakers(hass)}
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            return {"available": False, "reason": str(err)}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ROOM_SPEAKERS,
+        room_speakers,
+        supports_response=SupportsResponse.ONLY,
     )
 
     async def assign_preview(_call: ServiceCall) -> None:

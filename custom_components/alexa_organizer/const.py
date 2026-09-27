@@ -48,6 +48,8 @@ SERVICE_FORGET_ENDPOINT = "forget_endpoint"
 SERVICE_SET_PREFERRED_SPEAKER = "set_preferred_speaker"
 # Experimental: place ONE device in its HA area's room, creating that room if needed.
 SERVICE_PLACE_IN_AREA = "place_in_area"
+# Read-only diagnostic (returns response): each room's current preferred speaker + candidates.
+SERVICE_ROOM_SPEAKERS = "room_speakers"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.

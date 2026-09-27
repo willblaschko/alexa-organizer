@@ -127,3 +127,7 @@ alexa_devices:
       description: Act on exactly these (the panel uses this); overrides the flagged set.
       selector:
         object:
+
+room_speakers:
+  name: Report room preferred speakers (experimental)
+  description: EXPERIMENTAL, read-only — returns each Alexa room's current preferred ("play music here") speaker, its play-music targeting, the speaker-capable candidates, and all members with their categories. Returns a response (use return_response). Makes no changes.

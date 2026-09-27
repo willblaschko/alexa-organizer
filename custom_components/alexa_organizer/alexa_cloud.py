@@ -423,22 +423,33 @@ async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
 
     out: list[dict] = []
     for g in groups:
-        members = [m["id"] for m in (g.get("memberDevices") or {}).get("items") or [] if m.get("id")]
+        member_ids = [m["id"] for m in (g.get("memberDevices") or {}).get("items") or [] if m.get("id")]
+        members = [
+            {
+                "endpointId": mid,
+                "name": info.get(mid, {}).get("name", mid),
+                "category": info.get(mid, {}).get("category", ""),
+                "is_speaker": info.get(mid, {}).get("category") in _SPEAKER_CATEGORIES,
+            }
+            for mid in member_ids
+        ]
         candidates = [
-            {"endpointId": mid, "name": info.get(mid, {}).get("name", mid)}
-            for mid in members
-            if info.get(mid, {}).get("category") in _SPEAKER_CATEGORIES
+            {"endpointId": m["endpointId"], "name": m["name"]} for m in members if m["is_speaker"]
         ]
         if not candidates:
             continue
         sc = g.get("speakerConfiguration") or {}
         current = [s.get("endpointId") for s in (sc.get("selectedSpeakers") or []) if s.get("endpointId")]
+        cur_id = current[0] if current else None
         out.append(
             {
                 "room_id": g["id"],
                 "room_name": _group_name(g),
-                "current_id": current[0] if current else None,
+                "current_id": cur_id,
+                "current_name": info.get(cur_id, {}).get("name") if cur_id else None,
+                "targeting": sc.get("playMusicTargetingType"),
                 "candidates": sorted(candidates, key=lambda c: c["name"].lower()),
+                "members": sorted(members, key=lambda c: c["name"].lower()),
             }
         )
     return sorted(out, key=lambda r: r["room_name"].lower())
