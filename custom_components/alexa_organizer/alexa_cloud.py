@@ -403,12 +403,34 @@ _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
 #                                    | THIRD_PARTY | UNKNOWN   (Sonos = THIRD_PARTY)
 #   GroupPlayMusicTargetingTypeInput = ALWAYS | ONLY_WHEN_GROUP_NAME_IS_SPOKEN
 # (NB: the READ side reports the targeting as ALWAYS too. Our old PRIMARY/ALL_THE_TIME was wrong.)
-_SET_SPEAKER = (
-    "mutation s($id:String!,$ep:String!){"
-    "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,"
-    "selectedSpeakers:[{type:THIRD_PARTY,endpointId:$ep}],playMusicTargetingType:ALWAYS})"
-    "{playMusicTargetingType selectedSpeakers{type endpointId}}}"
+# Valid GroupEndpointSpeakerType enum values (verified live by introspection). The schema
+# hides the type NAME, so the value must be inlined as a LITERAL in the query text (a typed
+# variable "$t:GroupEndpointSpeakerType!" fails "Unknown type") — hence the string builder
+# below. Picking the wrong type fails INTERNAL_FRAMEWORK_FAILURE (e.g. calling an Echo
+# THIRD_PARTY), so it must match the actual device.
+_SPEAKER_TYPES = frozenset(
+    {"ALEXA_DEVICE", "BONDED_CLUSTER", "MULTI_ROOM_MUSIC_CLUSTER", "THIRD_PARTY", "UNKNOWN"}
 )
+
+
+def _speaker_type_for(device_type: str | None) -> str:
+    """The GroupEndpointSpeakerType for an endpoint. Amazon devices (Echo/Dot/Show) carry a
+    dmsIdentifier deviceType and are ALEXA_DEVICE; partner speakers (Sonos, etc.) have none
+    and are THIRD_PARTY. Same signal as the source="echo" tag in build_board."""
+    return "ALEXA_DEVICE" if device_type else "THIRD_PARTY"
+
+
+def _set_speaker_query(speaker_type: str) -> str:
+    """Build the updateDeviceGroupSpeakerConfiguration mutation with the enum inlined as a
+    literal (see _SPEAKER_TYPES). speaker_type must be a known enum value — never user text."""
+    if speaker_type not in _SPEAKER_TYPES:
+        raise ValueError(f"unknown speaker type {speaker_type!r}; expected one of {sorted(_SPEAKER_TYPES)}")
+    return (
+        "mutation s($id:String!,$ep:String!){"
+        "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,"
+        f"selectedSpeakers:[{{type:{speaker_type},endpointId:$ep}}],playMusicTargetingType:ALWAYS}})"
+        "{playMusicTargetingType selectedSpeakers{type endpointId}}}"
+    )
 
 
 async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
@@ -466,12 +488,31 @@ async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
 
 
 async def async_set_preferred_speaker(
-    hass, room_id: str, endpoint_id: str, email: str | None = None
+    hass,
+    room_id: str,
+    endpoint_id: str,
+    speaker_type: str | None = None,
+    email: str | None = None,
 ) -> None:
-    """Set one room's preferred speaker (brand-agnostic — Echo, Sonos, whatever's in the room)."""
+    """Set one room's preferred speaker (brand-agnostic — Echo, Sonos, whatever's in the room).
+
+    The speaker's GroupEndpointSpeakerType must match the actual device or Alexa fails with
+    INTERNAL_FRAMEWORK_FAILURE. When not given, we look the endpoint up and derive it from
+    whether it carries an Amazon deviceType (Echo => ALEXA_DEVICE, else THIRD_PARTY).
+    """
+    if speaker_type is None:
+        node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
+        eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
+        device_type: str | None = None
+        for e in eps:
+            if e.get("id") == endpoint_id:
+                dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier") or {}
+                device_type = ((dms.get("deviceType") or {}).get("value") or {}).get("text")
+                break
+        speaker_type = _speaker_type_for(device_type)
     await async_graphql(
         hass,
-        {"query": _SET_SPEAKER, "variables": {"id": room_id, "ep": endpoint_id}},
+        {"query": _set_speaker_query(speaker_type), "variables": {"id": room_id, "ep": endpoint_id}},
         email,
     )
 
@@ -835,6 +876,18 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
         return row
 
     ep_rows = [device_row(e) for e in eps]
+
+    # Collapse duplicate speakers. One physical Echo can surface as BOTH a native Amazon
+    # endpoint (source "echo") and an HA-bridged media_player twin (a smart-home endpoint of
+    # the same friendly name). The native endpoint is the real music sink; the twin is a
+    # control shadow that can't be set as a group's preferred speaker. Offer "make main" only
+    # on the native one — strip the twin's speaker affordance so a room shows one main-speaker
+    # choice per physical device, not two.
+    echo_speaker_names = {_norm(r["name"]) for r in ep_rows if r["source"] == "echo" and r["is_speaker"]}
+    for r in ep_rows:
+        if r["source"] != "echo" and r["is_speaker"] and _norm(r["name"]) in echo_speaker_names:
+            r["is_speaker"] = False
+            r["speaker_shadow"] = True  # a duplicate of a native Echo; FE may note it
 
     # HA-exposed entities that never surfaced as an Alexa endpoint (not synced yet).
     unsynced: list[dict] = []

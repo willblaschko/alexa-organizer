@@ -442,3 +442,63 @@ def test_board_matches_via_name_alias():
     devs = _rooms(board)["Kitchen"]["devices"]
     assert len(devs) == 1  # matched via alias — no duplicate unsynced row
     assert devs[0]["source"] == "ha" and devs[0]["entity_id"] == "light.k"
+
+
+# ── preferred-speaker type selection (the INTERNAL_FRAMEWORK_FAILURE fix) ───────
+def test_speaker_type_echo_is_alexa_device():
+    # An Echo carries an Amazon deviceType => ALEXA_DEVICE (NOT THIRD_PARTY).
+    assert ac._speaker_type_for("ECHO_SHOW") == "ALEXA_DEVICE"
+    assert ac._speaker_type_for("A1RABVCI4QCIKC") == "ALEXA_DEVICE"
+
+
+def test_speaker_type_partner_is_third_party():
+    # Sonos / partner speakers have no deviceType => THIRD_PARTY.
+    assert ac._speaker_type_for(None) == "THIRD_PARTY"
+    assert ac._speaker_type_for("") == "THIRD_PARTY"
+
+
+def test_set_speaker_query_inlines_enum_literal_and_always():
+    q = ac._set_speaker_query("ALEXA_DEVICE")
+    assert "type:ALEXA_DEVICE" in q  # enum is a LITERAL, not a $variable
+    assert "$t:" not in q and "PlayMusicTargetingType" not in q  # no hidden type name declared
+    assert "playMusicTargetingType:ALWAYS" in q
+    assert ac._set_speaker_query("THIRD_PARTY").count("type:THIRD_PARTY") == 1
+
+
+def test_set_speaker_query_rejects_unknown_type():
+    # Our old wrong guesses (PRIMARY / ALL_THE_TIME) must never slip into the query.
+    try:
+        ac._set_speaker_query("PRIMARY")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for unknown speaker type")
+
+
+def test_board_collapses_ha_twin_of_native_echo_speaker():
+    # A native Echo (deviceType) and its HA-bridged media_player twin share a name in one room.
+    # Only the native endpoint keeps the "make main" affordance; the twin is a shadow.
+    board = ac.build_board(
+        [_row("media_player.bedroom_echo", "Bedroom Echo Show", "media_player", "Bedroom")],
+        [
+            _ep("e1", "Bedroom Echo Show", "ALEXA_VOICE_ENABLED", device_type="A1RABVCI4QCIKC"),
+            _ep("e2", "Bedroom Echo Show", "SPEAKER"),  # HA-bridged twin, no deviceType
+        ],
+        [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
+    )
+    devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
+    assert devs["e1"]["source"] == "echo" and devs["e1"]["is_speaker"]  # native = the speaker
+    assert devs["e2"]["is_speaker"] is False and devs["e2"].get("speaker_shadow")  # twin collapsed
+
+
+def test_board_distinct_speakers_are_not_collapsed():
+    # Two genuinely different speakers (different names) both stay selectable.
+    board = ac.build_board(
+        [],
+        [
+            _ep("e1", "Bedroom Echo", "ALEXA_VOICE_ENABLED", device_type="A1"),
+            _ep("e2", "Bedroom Sonos", "SPEAKER"),
+        ],
+        [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
+    )
+    devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
+    assert devs["e1"]["is_speaker"] and devs["e2"]["is_speaker"]  # both remain main-able
