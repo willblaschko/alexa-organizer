@@ -397,13 +397,16 @@ async def async_board(hass, email: str | None = None) -> dict:
 # ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
 _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
 
-# Enums (PRIMARY, ALL_THE_TIME) are inlined as literals rather than typed variables —
-# the schema doesn't expose the enum type NAMES ("Unknown type 'PlayMusicTargetingType'"),
-# but it validates the literal values fine. Only the plain strings are variables.
+# Enum values verified live by introspection (the schema hides the type NAMES, so they're
+# inlined as literals; only the plain strings are variables):
+#   GroupEndpointSpeakerType       = ALEXA_DEVICE | BONDED_CLUSTER | MULTI_ROOM_MUSIC_CLUSTER
+#                                    | THIRD_PARTY | UNKNOWN   (Sonos = THIRD_PARTY)
+#   GroupPlayMusicTargetingTypeInput = ALWAYS | ONLY_WHEN_GROUP_NAME_IS_SPOKEN
+# (NB: the READ side reports the targeting as ALWAYS too. Our old PRIMARY/ALL_THE_TIME was wrong.)
 _SET_SPEAKER = (
     "mutation s($id:String!,$ep:String!){"
     "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,"
-    "selectedSpeakers:[{type:PRIMARY,endpointId:$ep}],playMusicTargetingType:ALL_THE_TIME})"
+    "selectedSpeakers:[{type:THIRD_PARTY,endpointId:$ep}],playMusicTargetingType:ALWAYS})"
     "{playMusicTargetingType selectedSpeakers{type endpointId}}}"
 )
 
