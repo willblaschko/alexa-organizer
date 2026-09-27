@@ -31,6 +31,7 @@ from .const import (
     SERVICE_ROOM_OP,
     SERVICE_ROOM_SPEAKERS,
     SERVICE_SET_PREFERRED_SPEAKER,
+    SERVICE_DEBUG_GRAPHQL,
 )
 from .panel import async_register_panel, async_unregister_panel
 
@@ -48,6 +49,7 @@ _ALL_SERVICES = (
     SERVICE_SET_PREFERRED_SPEAKER,
     SERVICE_PLACE_IN_AREA,
     SERVICE_ROOM_SPEAKERS,
+    SERVICE_DEBUG_GRAPHQL,
 )
 
 
@@ -353,6 +355,27 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_ROOM_SPEAKERS,
         room_speakers,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    async def debug_graphql(call: ServiceCall) -> dict:
+        # DEBUG (returns response): run an arbitrary GraphQL body against Alexa and return
+        # the raw result (data + errors). Lets us introspect/repair mutations from REST.
+        from . import alexa_cloud
+
+        body: dict = {"query": call.data["query"]}
+        if call.data.get("variables") is not None:
+            body["variables"] = call.data["variables"]
+        try:
+            return {"ok": True, "result": await alexa_cloud.async_graphql(hass, body)}
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            return {"ok": False, "error": str(err)}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DEBUG_GRAPHQL,
+        debug_graphql,
+        schema=vol.Schema({vol.Required("query"): str, vol.Optional("variables"): dict}),
         supports_response=SupportsResponse.ONLY,
     )
 

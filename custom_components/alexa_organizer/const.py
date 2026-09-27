@@ -50,6 +50,8 @@ SERVICE_SET_PREFERRED_SPEAKER = "set_preferred_speaker"
 SERVICE_PLACE_IN_AREA = "place_in_area"
 # Read-only diagnostic (returns response): each room's current preferred speaker + candidates.
 SERVICE_ROOM_SPEAKERS = "room_speakers"
+# Debug (returns response): run an arbitrary GraphQL body against Alexa. Temporary.
+SERVICE_DEBUG_GRAPHQL = "debug_graphql"
 
 # How many junk devices to remove per apply call when no explicit limit is given —
 # small, so the first real run is a safe taste, not a 60-device sweep.
