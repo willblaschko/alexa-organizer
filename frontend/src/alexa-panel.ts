@@ -689,7 +689,13 @@ export class AlexaPanel extends LitElement {
       string,
       { label: string; kind: string; order: number; devices: BoardDevice[] }
     >();
+    // A Home Assistant copy of a speaker whose real (native) twin is already shown here adds
+    // nothing — hide it. Only a copy with NO native twin (a speaker that exists ONLY in HA)
+    // is worth showing (still not playable, but the user can't see it any other way).
+    const nrm = (s: string) => (s || "").trim().toLowerCase();
+    const nativeSpeakerNames = new Set(devices.filter((d) => d.is_speaker).map((d) => nrm(d.name)));
     for (const d of devices) {
+      if (d.speaker_note === "ha_proxy" && nativeSpeakerNames.has(nrm(d.name))) continue;
       let key: string, label: string, kind: string, order: number;
       if (d.is_speaker) {
         // Real, playable Alexa speakers (native — Echo, or Sonos via the Sonos skill). The
