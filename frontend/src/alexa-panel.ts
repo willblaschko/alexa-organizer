@@ -290,12 +290,16 @@ export class AlexaPanel extends LitElement {
       // Run the queue lane by lane; ops within a lane are independent → in parallel.
       for (const { lane, ops } of planLanes(accepted)) {
         if (lane === "expose") {
-          // Opt-outs pin the current state via a label; then one reconcile (the review is consent).
+          // Write each exposure change as an explicit label — accepted → its target, opted-out
+          // → the opposite (pin current) — then one reconcile. Explicit labels are needed so a
+          // hide against policy (e.g. un-exposing a media_player Alexa already has) actually sticks.
           const exposeAll = plan.groups.flatMap((g) => g.ops).filter((o) => o.action.kind === "expose");
-          for (const o of exposeAll.filter((o) => !this._accepted.has(o.id)))
-            await ws({ type: "alexa_organizer/set", entity_id: o.action.entity_id, expose: !(o.action.to as boolean) });
           ops.forEach((o) => mark(o.id, "running"));
           try {
+            for (const o of exposeAll) {
+              const decided = this._accepted.has(o.id) ? (o.action.to as boolean) : !(o.action.to as boolean);
+              await ws({ type: "alexa_organizer/set", entity_id: o.action.entity_id, expose: decided });
+            }
             await ws({ type: "alexa_organizer/apply", force: true });
             ops.forEach((o) => mark(o.id, "done"));
           } catch {

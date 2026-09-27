@@ -971,6 +971,27 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
             "action": {"kind": "expose", "entity_id": eid, "to": desired},
         })
 
+    # 1b. Dedupe: an HA media_player exposed to Alexa that ALSO exists as an Alexa-native
+    # (echo) device is a redundant duplicate — Alexa already has it. Propose un-exposing the
+    # HA copy (opt-in — it's a removal). Only when a native twin exists, so a Sonos reachable
+    # ONLY through HA is never stranded.
+    native_names = {_norm(d.get("name", "")) for d in all_devices if d.get("source") == "echo"}
+    have_expose = {o["id"] for o in g["expose"]}
+    for d in all_devices:
+        if d.get("source") != "ha" or d.get("domain") != "media_player" or not d.get("entity_id"):
+            continue
+        if _norm(d.get("name", "")) not in native_names:
+            continue
+        eid = d["entity_id"]
+        if f"expose:{eid}" in have_expose:
+            continue
+        g["expose"].append({
+            "id": f"expose:{eid}", "group": "expose",
+            "title": f"Stop exposing {d.get('name')}", "detail": "Alexa already has this device",
+            "suggested": False, "destructive": True,
+            "action": {"kind": "expose", "entity_id": eid, "to": False},
+        })
+
     # 2 & 7. Rooms — create/rename now, delete last.
     for o in room_ops:
         if o["op"] == "create":

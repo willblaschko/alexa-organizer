@@ -378,6 +378,29 @@ def test_plan_creates_and_places_for_ha_area_with_no_alexa_room():
     assert move["action"] == {"kind": "move", "endpoint_id": "e1", "from": None, "to": "", "area": "Guest Bedroom"}
 
 
+def test_plan_dedupes_ha_mediaplayer_that_alexa_has_natively():
+    # A Sonos/Echo exposed from HA (source ha, media_player) that ALSO exists as an
+    # Alexa-native (echo) device is a duplicate → propose un-exposing the HA copy (opt-in).
+    ha = _bdev("Bedroom", "ha", endpoint_id="e_ha", room_id="b")
+    ha["domain"] = "media_player"
+    ha["entity_id"] = "media_player.bedroom"
+    echo = _bdev("Bedroom", "echo", endpoint_id="e_echo", room_id="b", is_speaker=True)
+    plan = ac.assemble_plan({"rooms": [_broom("b", "Bedroom", [ha, echo])], "unroomed": []}, [], [])
+    ops = [o for o in _groups(plan)["expose"]["ops"] if o["action"].get("entity_id") == "media_player.bedroom"]
+    assert ops and ops[0]["action"] == {"kind": "expose", "entity_id": "media_player.bedroom", "to": False}
+    assert ops[0]["suggested"] is False  # opt-in (a removal / loss)
+
+
+def test_plan_keeps_ha_mediaplayer_with_no_native_twin():
+    # A Sonos with NO Alexa-native endpoint (only the HA exposure) must NOT be un-exposed.
+    ha = _bdev("Backyard", "ha", endpoint_id="e_ha", room_id="b")
+    ha["domain"] = "media_player"
+    ha["entity_id"] = "media_player.backyard"
+    plan = ac.assemble_plan({"rooms": [_broom("b", "Backyard", [ha])], "unroomed": []}, [], [])
+    exposeg = next((g for g in plan["groups"] if g["key"] == "expose"), {"ops": []})
+    assert not any(o["action"].get("entity_id") == "media_player.backyard" for o in exposeg["ops"])
+
+
 def test_plan_vacuum_is_pulled_out_of_its_room():
     # A vacuum in a room answers to "turn on <room>" — pull it out (exposed, but not a
     # room member). Move op targets "" (no room = remove from the group).
