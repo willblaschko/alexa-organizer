@@ -26,7 +26,7 @@ export interface BoardRoom {
   in_alexa: boolean;
   in_ha: boolean;
   preferred_id: string | null;
-  targeting?: string | null; // playMusicTargetingType: ALL_THE_TIME | ONLY_WHEN_GROUP_NAME_IS_SPOKEN
+  targeting?: string | null; // playMusicTargetingType: ALWAYS | ONLY_WHEN_GROUP_NAME_IS_SPOKEN
   devices: BoardDevice[];
   _creating?: boolean; // projected: this room will be created by an accepted op
 }

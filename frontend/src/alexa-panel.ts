@@ -605,9 +605,11 @@ export class AlexaPanel extends LitElement {
     // Preferred-speaker control: only for a speaker that's a member of a real Alexa room.
     const canBeMain = d.is_speaker && !!d.endpoint_id && !!room.id && !d._removing;
     const isMain = canBeMain && this._effectivePreferred(room) === d.endpoint_id;
-    // Staging a pick writes ALL_THE_TIME; otherwise use the room's current targeting mode.
+    // Alexa reports the targeting mode as "ALWAYS" (verified live); staging a pick will write
+    // ALWAYS too. (The old "ALL_THE_TIME" spelling was wrong and made every room read "only
+    // when named" even when it already played here by default.)
     const always =
-      (room.id && room.id in this._userPref ? "ALL_THE_TIME" : room.targeting) === "ALL_THE_TIME";
+      (room.id && room.id in this._userPref ? "ALWAYS" : room.targeting) === "ALWAYS";
     // Inline delete: never for protected devices (This Device / Audible / the AMP session).
     const rmOp = d.protected ? null : this._removalOp(d);
     const rmStaged = !!rmOp && rmOp.id in this._userRemove;

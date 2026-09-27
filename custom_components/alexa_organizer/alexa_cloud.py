@@ -596,7 +596,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
     # Alexa group membership + preferred speaker per room.
     ep_room: dict[str, str] = {}
     preferred: dict[str, str] = {}
-    targeting: dict[str, str] = {}  # room id → playMusicTargetingType (ALL_THE_TIME / ONLY_WHEN…)
+    targeting: dict[str, str] = {}  # room id → playMusicTargetingType (ALWAYS / ONLY_WHEN…)
     group_by_norm: dict[str, dict] = {}
     for g in groups:
         rid = g.get("id") or ""
