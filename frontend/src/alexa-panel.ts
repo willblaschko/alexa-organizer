@@ -65,6 +65,7 @@ export class AlexaPanel extends LitElement {
   @state() private _applying = false;
   @state() private _userMove: Record<string, string> = {}; // endpoint id -> room/#area# value the user chose
   @state() private _userPref: Record<string, string> = {}; // room id -> chosen main-speaker endpoint id
+  @state() private _userRemove: Record<string, PlanOp> = {}; // op id -> a removal op the user staged inline
   @state() private _expandedGroups = new Set<string>(); // review groups shown expanded
 
   override connectedCallback(): void {
@@ -100,6 +101,7 @@ export class AlexaPanel extends LitElement {
       this._opStatus = {};
       this._userMove = {};
       this._userPref = {};
+      this._userRemove = {};
     } finally {
       this._planBusy = false;
     }
@@ -147,7 +149,8 @@ export class AlexaPanel extends LitElement {
     const groups = this._plan?.groups ?? [];
     const touched = Object.keys(this._userMove);
     const prefRooms = Object.keys(this._userPref);
-    if (touched.length === 0 && prefRooms.length === 0) return groups;
+    const removeOps = Object.values(this._userRemove);
+    if (touched.length === 0 && prefRooms.length === 0 && removeOps.length === 0) return groups;
     const cur = this._endpointCurrentRoom();
     const synth: PlanOp[] = [];
     const extraCreates: PlanOp[] = [];
@@ -188,22 +191,40 @@ export class AlexaPanel extends LitElement {
     }));
     const prefRoomsSet = new Set(prefRooms);
 
+    // User-staged inline removals, bucketed by their group key. An op replaces any base op of
+    // the same id (a user removal that coincides with a plan-suggested one).
+    const removeByGroup = new Map<string, PlanOp[]>();
+    for (const o of removeOps) (removeByGroup.get(o.group) ?? removeByGroup.set(o.group, []).get(o.group)!).push(o);
+    const removeIds = new Set(removeOps.map((o) => o.id));
+    const REMOVE_TITLES: Record<string, string> = {
+      cleanup_devices: "Delete devices", cleanup_endpoints: "Delete from Alexa", expose: "Exposure",
+    };
+
     const touchedSet = new Set(touched);
     const drop = (o: PlanOp) => o.action.kind === "move" && !!o.action.endpoint_id && touchedSet.has(o.action.endpoint_id);
     const dropPref = (o: PlanOp) => o.action.kind === "preferred" && !!o.action.room_id && prefRoomsSet.has(o.action.room_id);
     const haveCreate = new Set(groups.flatMap((g) => g.ops).map((o) => o.id));
     const newCreates = extraCreates.filter((o) => !haveCreate.has(o.id));
+    const seenRemoveGroups = new Set<string>();
     let sawPlace = false;
     let sawSpeakers = false;
+    const withRemovals = (g: PlanGroup, ops: PlanOp[]): PlanOp[] => {
+      const extra = removeByGroup.get(g.key);
+      if (!extra) return ops;
+      seenRemoveGroups.add(g.key);
+      return [...ops.filter((o) => !removeIds.has(o.id)), ...extra];
+    };
     const out = groups.map((g) => {
-      if (g.key === "rooms") return { ...g, ops: [...g.ops, ...newCreates] };
+      if (g.key === "rooms") return { ...g, ops: withRemovals(g, [...g.ops, ...newCreates]) };
       if (g.key === "speakers") {
         sawSpeakers = true;
-        return { ...g, ops: [...g.ops.filter((o) => !dropPref(o)), ...prefSynth] };
+        return { ...g, ops: withRemovals(g, [...g.ops.filter((o) => !dropPref(o)), ...prefSynth]) };
       }
-      if (g.key !== "place") return g;
-      sawPlace = true;
-      return { ...g, ops: [...g.ops.filter((o) => !drop(o)), ...synth] };
+      if (g.key === "place") {
+        sawPlace = true;
+        return { ...g, ops: withRemovals(g, [...g.ops.filter((o) => !drop(o)), ...synth]) };
+      }
+      return { ...g, ops: withRemovals(g, g.ops) };
     });
     if (!groups.some((g) => g.key === "rooms") && newCreates.length)
       out.unshift({ key: "rooms", title: "Rooms", destructive: false, ops: newCreates });
@@ -211,6 +232,10 @@ export class AlexaPanel extends LitElement {
       out.push({ key: "place", title: "Put devices in their room", destructive: false, ops: synth });
     if (!sawSpeakers && prefSynth.length)
       out.push({ key: "speakers", title: "Preferred speaker", destructive: false, ops: prefSynth });
+    // Removal groups the plan didn't already have.
+    for (const [key, ops] of removeByGroup)
+      if (!seenRemoveGroups.has(key))
+        out.push({ key, title: REMOVE_TITLES[key] ?? "Remove", destructive: true, ops });
     return out;
   }
 
@@ -238,6 +263,51 @@ export class AlexaPanel extends LitElement {
     return (this._plan?.board.rooms ?? [])
       .filter((r) => r.id || r.in_ha)
       .map((r) => ({ value: (r.id as string) || `#area#${r.name}`, name: r.name }));
+  }
+
+  // The removal op for a device, by what it actually is: an Amazon device is deregistered,
+  // a smart-home endpoint is forgotten, and an HA-exposed device is un-exposed (stop sending
+  // it to Alexa). Returns null if there's nothing removable (e.g. an unsynced HA row).
+  private _removalOp(d: BoardDevice): PlanOp | null {
+    if (d.source === "ha" && d.entity_id) {
+      return {
+        id: `expose:${d.entity_id}`, group: "expose",
+        title: `Stop sending ${d.name} to Alexa`, detail: "removes the Home Assistant copy",
+        suggested: true, destructive: true,
+        action: { kind: "expose", entity_id: d.entity_id, to: false },
+      };
+    }
+    if (!d.endpoint_id) return null;
+    if (d.source === "echo") {
+      return {
+        id: `rmdev:${d.endpoint_id}`, group: "cleanup_devices",
+        title: `Delete ${d.name}`, detail: "removes this device from Alexa",
+        suggested: true, destructive: true,
+        action: { kind: "remove_device", endpoint_id: d.endpoint_id },
+      };
+    }
+    return {
+      id: `rmep:${d.endpoint_id}`, group: "cleanup_endpoints",
+      title: `Delete ${d.name}`, detail: "removes this from Alexa",
+      suggested: true, destructive: true,
+      action: { kind: "remove_endpoint", endpoint_id: d.endpoint_id },
+    };
+  }
+
+  private _onRemove(d: BoardDevice): void {
+    const op = this._removalOp(d);
+    if (!op) return;
+    const staged = { ...this._userRemove };
+    const accepted = new Set(this._accepted);
+    if (op.id in staged) {
+      delete staged[op.id]; // toggle off — keep the device
+      accepted.delete(op.id);
+    } else {
+      staged[op.id] = op;
+      accepted.add(op.id);
+    }
+    this._userRemove = staged;
+    this._accepted = accepted;
   }
 
   private _onHomeMove(endpointId: string, value: string): void {
@@ -297,7 +367,7 @@ export class AlexaPanel extends LitElement {
           // Write each exposure change as an explicit label — accepted → its target, opted-out
           // → the opposite (pin current) — then one reconcile. Explicit labels are needed so a
           // hide against policy (e.g. un-exposing a media_player Alexa already has) actually sticks.
-          const exposeAll = plan.groups.flatMap((g) => g.ops).filter((o) => o.action.kind === "expose");
+          const exposeAll = this._effectiveGroups().flatMap((g) => g.ops).filter((o) => o.action.kind === "expose");
           ops.forEach((o) => mark(o.id, "running"));
           try {
             for (const o of exposeAll) {
@@ -538,6 +608,9 @@ export class AlexaPanel extends LitElement {
     // Staging a pick writes ALL_THE_TIME; otherwise use the room's current targeting mode.
     const always =
       (room.id && room.id in this._userPref ? "ALL_THE_TIME" : room.targeting) === "ALL_THE_TIME";
+    // Inline delete: never for protected devices (This Device / Audible / the AMP session).
+    const rmOp = d.protected ? null : this._removalOp(d);
+    const rmStaged = !!rmOp && rmOp.id in this._userRemove;
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
@@ -581,6 +654,16 @@ export class AlexaPanel extends LitElement {
                 (r) => html`<option value=${r.value} ?selected=${selected === r.value}>${r.name}</option>`
               )}
             </select>`
+          : nothing}
+        ${rmOp
+          ? html`<button
+              class="rmbtn ${rmStaged ? "staged" : ""}"
+              ?disabled=${this._applying}
+              title=${rmStaged ? "Keep this device" : "Delete this from Alexa (staged for review)"}
+              @click=${() => this._onRemove(d)}
+            >
+              ${rmStaged ? "keep" : "remove"}
+            </button>`
           : nothing}
       </div>
     `;
@@ -860,6 +943,27 @@ export class AlexaPanel extends LitElement {
       font-weight: 600;
       color: var(--primary-color, #2f6fed);
       white-space: nowrap;
+    }
+    .rmbtn {
+      flex: none;
+      border: 1px solid var(--divider-color, #cfcfcf);
+      background: var(--card-background-color, #fff);
+      color: var(--secondary-text-color, #888);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font: inherit;
+      font-size: 0.72rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .rmbtn:hover {
+      border-color: var(--error-color, #d33);
+      color: var(--error-color, #d33);
+    }
+    .rmbtn.staged {
+      border-color: var(--error-color, #d33);
+      color: #fff;
+      background: var(--error-color, #d33);
     }
     .rm {
       border: 1px solid var(--divider-color, #d0d0d0);
