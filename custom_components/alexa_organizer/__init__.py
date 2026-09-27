@@ -13,13 +13,10 @@ import logging
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.helpers import area_registry as ar, entity_registry as er
-from homeassistant.helpers.debounce import Debouncer
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from . import engine, exposure
 from .const import (
-    DEBOUNCE_SECONDS,
     DEVICE_CLEANUP_DEFAULT_LIMIT,
     DOMAIN,
     MAX_REMOVALS,
@@ -61,38 +58,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except exposure.ExposureUnavailable as err:
         _LOGGER.warning("Alexa Organizer: couldn't set expose-new OFF (%s); continuing", err)
 
-    async def _run_reconcile() -> None:
-        try:
-            await engine.async_reconcile(hass)
-        except exposure.ExposureUnavailable:
-            pass  # already logged + notified by the engine's HOLD
-
-    debouncer = Debouncer(
-        hass,
-        _LOGGER,
-        cooldown=DEBOUNCE_SECONDS,
-        immediate=False,
-        function=_run_reconcile,
-    )
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"debouncer": debouncer}
-
-    @callback
-    def _schedule(_event=None) -> None:
-        hass.async_create_task(debouncer.async_call())
-
-    # Registry changes (new bulb, new room, re-home) trigger a debounced reconcile.
-    entry.async_on_unload(
-        hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _schedule)
-    )
-    entry.async_on_unload(
-        hass.bus.async_listen(ar.EVENT_AREA_REGISTRY_UPDATED, _schedule)
-    )
+    # NOTE: no automatic reconcile. Exposure is applied through the panel's "Apply"
+    # (reviewed) or the explicit alexa_organizer.reconcile service — never silently on
+    # registry changes. Auto-reconcile used to fight the review model (it would try to
+    # apply opt-in hides behind the user's back and nag with a HOLD notification).
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {}
 
     _register_services(hass)
     await async_register_panel(hass)
-
-    # Initial reconcile (guarded by the engine's fail-safe).
-    await _run_reconcile()
     return True
 
 

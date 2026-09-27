@@ -489,11 +489,10 @@ export class AlexaPanel extends LitElement {
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
-          <div class="name ${d._removing ? "strike" : ""}">
-            ${preferred ? html`<span class="star on">★</span> ` : nothing}${d.name}
-          </div>
+          <div class="name ${d._removing ? "strike" : ""}">${d.name}</div>
           <div class="meta">
             <span class="kind">${chip}</span>
+            ${preferred ? html`<span class="pill">plays music here</span>` : nothing}
             ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
             ${!d.synced ? html`<span class="reason">will sync to Alexa</span>` : nothing}
             ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
@@ -694,33 +693,25 @@ export class AlexaPanel extends LitElement {
       overflow: hidden;
       box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
     }
-    /* Inside a room card: each kind is a tinted box with an accent rail. */
-    /* Masonry: kind boxes pack into as many ~260px columns as fit, flowing down each
-       column so tall boxes (Lighting) don't force short ones (Climate) to waste height.
-       CSS multi-column is the broadly-supported way to do this today. */
+    /* Within a room, each kind is a plain grouped-list section: an uppercase header with a
+       hairline, then its rows. No tinted rounded boxes / colored rails. Masonry packs the
+       sections into ~260px columns (CSS multi-column) so short sections fill the height. */
     .kindgrid {
       column-width: 260px;
-      column-gap: 10px;
+      column-gap: 22px;
     }
     .room .kindgroup {
-      --kind: var(--secondary-text-color, #6b7280);
-      border: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
-      border-left: 3px solid var(--kind);
-      border-radius: 10px;
-      background: color-mix(in srgb, var(--kind) 7%, var(--card-background-color, #fff));
-      padding: 10px 10px 8px; /* top padding (not a child margin) so the title never clips */
-      margin: 0 0 10px;
       min-width: 0;
+      margin: 0 0 18px;
       display: flow-root; /* own block-formatting context — no margin-clip at a column top */
       -webkit-column-break-inside: avoid;
-      break-inside: avoid; /* never split a box across columns */
+      break-inside: avoid; /* keep a section together within a column */
     }
-    /* Title, a divider, then the devices — always in that order, never cut off. */
     .room .kindgroup .gcap {
-      color: var(--kind);
-      margin: 0 0 6px;
+      color: var(--secondary-text-color, #6b7280);
+      margin: 0;
       padding-bottom: 5px;
-      border-bottom: 1px solid color-mix(in srgb, var(--kind) 20%, transparent);
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
     }
     .room .kindgroup .rows {
       background: transparent;
@@ -729,12 +720,14 @@ export class AlexaPanel extends LitElement {
       overflow: visible;
     }
     .room .kindgroup .row {
-      border-bottom-color: color-mix(in srgb, var(--kind) 18%, transparent);
       /* In a narrow masonry column, let the dropdown wrap below the name instead of
          crushing it — the device name keeps a full line, the room picker drops under it. */
       flex-wrap: wrap;
       gap: 4px 10px;
-      padding: 8px 2px;
+      padding: 9px 2px;
+    }
+    .room .kindgroup .row:last-child {
+      border-bottom: none;
     }
     .room .kindgroup .row .info {
       flex: 1 1 60%;
@@ -743,13 +736,6 @@ export class AlexaPanel extends LitElement {
       max-width: 100%;
       margin-left: auto;
     }
-    .room .kind-lighting { --kind: #e0a72e; }
-    .room .kind-speakers { --kind: #2f6fed; }
-    .room .kind-climate  { --kind: #129d9d; }
-    .room .kind-scenes   { --kind: #6a4bd8; }
-    .room .kind-other    { --kind: #6b7280; }
-    .room .kind-echo     { --kind: #b06f2e; }
-    .room .kind-alexa    { --kind: #9333ea; }
     /* Per-device inline controls in the board */
     .rowctl {
       display: flex;
@@ -757,22 +743,11 @@ export class AlexaPanel extends LitElement {
       gap: 6px;
       flex-shrink: 0;
     }
-    .star {
-      border: 1px solid var(--divider-color, #d0d0d0);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #999);
-      border-radius: 8px;
-      width: 30px;
-      height: 30px;
-      font-size: 15px;
-      line-height: 1;
-      cursor: pointer;
-      padding: 0;
-    }
-    .star.on {
-      color: #f5b301;
-      border-color: #f5b301;
-      background: color-mix(in srgb, #f5b301 14%, var(--card-background-color, #fff));
+    /* "plays music here" — marks a room's main speaker in plain words, not a mystery star. */
+    .pill {
+      font-size: 0.66rem;
+      font-weight: 600;
+      color: var(--primary-color, #2f6fed);
     }
     .rm {
       border: 1px solid var(--divider-color, #d0d0d0);
@@ -980,22 +955,23 @@ export class AlexaPanel extends LitElement {
       flex: none;
     }
     .meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
       font-size: 0.78rem;
       color: var(--secondary-text-color, #727272);
-      margin-top: 2px;
+      margin-top: 3px;
     }
     .kind {
-      display: inline-block;
       font-size: 0.68rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       padding: 1px 6px;
-      margin-right: 6px;
       border-radius: 4px;
       background: var(--divider-color, #e8e8e8);
       color: var(--secondary-text-color, #616161);
-      vertical-align: 1px;
     }
     .reason.label {
       color: var(--primary-color, #0288d1);
