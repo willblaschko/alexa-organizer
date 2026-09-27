@@ -60,6 +60,7 @@ export class AlexaPanel extends LitElement {
   @state() private _opStatus: Record<string, string> = {}; // op id -> pending/running/done/error
   @state() private _applying = false;
   @state() private _userMove: Record<string, string> = {}; // endpoint id -> room/#area# value the user chose
+  @state() private _userPref: Record<string, string> = {}; // room id -> chosen main-speaker endpoint id
   @state() private _expandedGroups = new Set<string>(); // review groups shown expanded
 
   override connectedCallback(): void {
@@ -94,6 +95,7 @@ export class AlexaPanel extends LitElement {
       );
       this._opStatus = {};
       this._userMove = {};
+      this._userPref = {};
     } finally {
       this._planBusy = false;
     }
@@ -140,7 +142,8 @@ export class AlexaPanel extends LitElement {
   private _effectiveGroups(): PlanGroup[] {
     const groups = this._plan?.groups ?? [];
     const touched = Object.keys(this._userMove);
-    if (touched.length === 0) return groups;
+    const prefRooms = Object.keys(this._userPref);
+    if (touched.length === 0 && prefRooms.length === 0) return groups;
     const cur = this._endpointCurrentRoom();
     const synth: PlanOp[] = [];
     const extraCreates: PlanOp[] = [];
@@ -171,13 +174,29 @@ export class AlexaPanel extends LitElement {
         });
       }
     }
+    // The user's explicit preferred-speaker picks become "preferred" ops, replacing any the
+    // plan auto-proposed for that room.
+    const prefSynth: PlanOp[] = prefRooms.map((roomId) => ({
+      id: `pref:${roomId}`, group: "speakers",
+      title: `Set the main speaker in ${this._roomName(roomId)}`, detail: "",
+      suggested: true, destructive: false,
+      action: { kind: "preferred", room_id: roomId, endpoint_id: this._userPref[roomId] },
+    }));
+    const prefRoomsSet = new Set(prefRooms);
+
     const touchedSet = new Set(touched);
     const drop = (o: PlanOp) => o.action.kind === "move" && !!o.action.endpoint_id && touchedSet.has(o.action.endpoint_id);
+    const dropPref = (o: PlanOp) => o.action.kind === "preferred" && !!o.action.room_id && prefRoomsSet.has(o.action.room_id);
     const haveCreate = new Set(groups.flatMap((g) => g.ops).map((o) => o.id));
     const newCreates = extraCreates.filter((o) => !haveCreate.has(o.id));
     let sawPlace = false;
+    let sawSpeakers = false;
     const out = groups.map((g) => {
       if (g.key === "rooms") return { ...g, ops: [...g.ops, ...newCreates] };
+      if (g.key === "speakers") {
+        sawSpeakers = true;
+        return { ...g, ops: [...g.ops.filter((o) => !dropPref(o)), ...prefSynth] };
+      }
       if (g.key !== "place") return g;
       sawPlace = true;
       return { ...g, ops: [...g.ops.filter((o) => !drop(o)), ...synth] };
@@ -186,7 +205,27 @@ export class AlexaPanel extends LitElement {
       out.unshift({ key: "rooms", title: "Rooms", destructive: false, ops: newCreates });
     if (!sawPlace && synth.length)
       out.push({ key: "place", title: "Put devices in their room", destructive: false, ops: synth });
+    if (!sawSpeakers && prefSynth.length)
+      out.push({ key: "speakers", title: "Preferred speaker", destructive: false, ops: prefSynth });
     return out;
+  }
+
+  private _roomName(roomId: string): string {
+    return (this._plan?.board.rooms ?? []).find((r) => r.id === roomId)?.name ?? roomId;
+  }
+
+  // The room's effective preferred speaker: the user's pick, else an accepted plan op, else current.
+  private _effectivePreferred(room: BoardRoom): string | null {
+    if (room.id && room.id in this._userPref) return this._userPref[room.id];
+    const op = (this._plan?.groups ?? [])
+      .flatMap((g) => g.ops)
+      .find((o) => o.action.kind === "preferred" && o.action.room_id === room.id && this._accepted.has(o.id));
+    return op ? (op.action.endpoint_id as string) : room.preferred_id;
+  }
+
+  private _onSetPreferred(roomId: string, endpointId: string): void {
+    this._userPref = { ...this._userPref, [roomId]: endpointId };
+    this._accepted = new Set(this._accepted).add(`pref:${roomId}`);
   }
 
   // Dropdown targets: every HA area (the source of truth, even without an Alexa room yet)
@@ -482,22 +521,35 @@ export class AlexaPanel extends LitElement {
         : d.source === "echo"
           ? "Echo"
           : "Alexa-only";
-    const preferred = !!(room.preferred_id && d.endpoint_id === room.preferred_id);
     // The device is rendered under its EFFECTIVE room, so the dropdown reflects that —
     // an HA-area room with no Alexa id yet uses its "#area#" sentinel value.
     const selected = room.id ?? (room.in_ha ? `#area#${room.name}` : "");
+    // Preferred-speaker control: only for a speaker that's a member of a real Alexa room.
+    const canBeMain = d.is_speaker && !!d.endpoint_id && !!room.id && !d._removing;
+    const isMain = canBeMain && this._effectivePreferred(room) === d.endpoint_id;
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
           <div class="name ${d._removing ? "strike" : ""}">${d.name}</div>
           <div class="meta">
             <span class="kind">${chip}</span>
-            ${preferred ? html`<span class="pill">plays music here</span>` : nothing}
             ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
             ${!d.synced ? html`<span class="reason">will sync to Alexa</span>` : nothing}
             ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
           </div>
         </div>
+        ${canBeMain
+          ? isMain
+            ? html`<span class="mainbadge" title="Answers “play music here”">♪ plays here</span>`
+            : html`<button
+                class="mainbtn"
+                ?disabled=${this._applying}
+                title="Make this the room's “play music here” speaker"
+                @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
+              >
+                make main
+              </button>`
+          : nothing}
         ${d.endpoint_id && !d._removing
           ? html`<select
               class="roomsel"
@@ -743,11 +795,30 @@ export class AlexaPanel extends LitElement {
       gap: 6px;
       flex-shrink: 0;
     }
-    /* "plays music here" — marks a room's main speaker in plain words, not a mystery star. */
-    .pill {
-      font-size: 0.66rem;
+    /* Preferred-speaker control on a speaker row. "make main" to set it; a plain-words
+       badge marks the one that answers "play music here" — no mystery star. */
+    .mainbtn {
+      flex: none;
+      border: 1px solid var(--divider-color, #cfcfcf);
+      background: var(--card-background-color, #fff);
+      color: var(--secondary-text-color, #666);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font: inherit;
+      font-size: 0.72rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .mainbtn:hover {
+      border-color: var(--primary-color, #2f6fed);
+      color: var(--primary-color, #2f6fed);
+    }
+    .mainbadge {
+      flex: none;
+      font-size: 0.72rem;
       font-weight: 600;
       color: var(--primary-color, #2f6fed);
+      white-space: nowrap;
     }
     .rm {
       border: 1px solid var(--divider-color, #d0d0d0);
