@@ -630,17 +630,28 @@ export class AlexaPanel extends LitElement {
           </div>
         </div>
         ${canBeMain
-          ? isMain && always
-            ? html`<span class="mainbadge" title="Always answers “play music here”">♪ plays here</span>`
+          ? isMain
+            ? always
+              ? html`<span class="mainbadge" title="A plain “play music” in this room plays on this speaker">♪ plays here</span>`
+              : html`<span
+                    class="reason"
+                    title="Right now music only comes here when you say the room name, e.g. “play music in ${room.name}”. A plain “play music” plays on whichever Echo you spoke to."
+                    >only if you say “${room.name}”</span
+                  ><button
+                    class="mainbtn warn"
+                    ?disabled=${this._applying}
+                    title="Make a plain “play music” in this room play on this speaker by default"
+                    @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
+                  >
+                    always play here
+                  </button>`
             : html`<button
-                class="mainbtn ${isMain ? "warn" : ""}"
+                class="mainbtn"
                 ?disabled=${this._applying}
-                title=${isMain
-                  ? "Only plays here when you say the room name — tap to make it play here by default"
-                  : "Make this the room's speaker for “play music here”"}
+                title="Make this the room's speaker for “play music here”"
                 @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
               >
-                ${isMain ? "only when named · play here always" : "make main"}
+                make main
               </button>`
           : nothing}
         ${d.endpoint_id && !d._removing

@@ -101,13 +101,24 @@ function e(e,t,o,r){var i,n=arguments.length,s=n<3?t:null===r?r=Object.getOwnPro
             ${e._removing?I`<span class="reason danger">will be removed</span>`:W}
           </div>
         </div>
-        ${i?n&&s?I`<span class="mainbadge" title="Always answers “play music here”">♪ plays here</span>`:I`<button
-                class="mainbtn ${n?"warn":""}"
+        ${i?n?s?I`<span class="mainbadge" title="A plain “play music” in this room plays on this speaker">♪ plays here</span>`:I`<span
+                    class="reason"
+                    title="Right now music only comes here when you say the room name, e.g. “play music in ${t.name}”. A plain “play music” plays on whichever Echo you spoke to."
+                    >only if you say “${t.name}”</span
+                  ><button
+                    class="mainbtn warn"
+                    ?disabled=${this._applying}
+                    title="Make a plain “play music” in this room play on this speaker by default"
+                    @click=${()=>this._onSetPreferred(t.id,e.endpoint_id)}
+                  >
+                    always play here
+                  </button>`:I`<button
+                class="mainbtn"
                 ?disabled=${this._applying}
-                title=${n?"Only plays here when you say the room name — tap to make it play here by default":"Make this the room's speaker for “play music here”"}
+                title="Make this the room's speaker for “play music here”"
                 @click=${()=>this._onSetPreferred(t.id,e.endpoint_id)}
               >
-                ${n?"only when named · play here always":"make main"}
+                make main
               </button>`:W}
         ${e.endpoint_id&&!e._removing?I`<select
               class="roomsel"
