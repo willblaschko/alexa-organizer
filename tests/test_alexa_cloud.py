@@ -161,7 +161,7 @@ def test_categorize_derives_from_annotation():
 # ── build_board (the aggregated room-centric join) ────────────────────────────
 
 
-def _ep(eid, name, category="", chrs="", device_type=None, manufacturer=None):
+def _ep(eid, name, category="", chrs="", device_type=None, manufacturer=None, serial=None, description=None):
     leg = {"chrsIdentifier": {"entityId": chrs}}
     if device_type is not None:
         leg["dmsIdentifier"] = {"deviceType": {"value": {"text": device_type}}}
@@ -173,6 +173,10 @@ def _ep(eid, name, category="", chrs="", device_type=None, manufacturer=None):
     }
     if manufacturer is not None:
         e["manufacturer"] = {"value": {"text": manufacturer}}
+    if serial is not None:
+        e["serialNumber"] = {"value": {"text": serial}}
+    if description is not None:
+        e["description"] = {"value": {"text": description}}
     return e
 
 
@@ -501,6 +505,47 @@ def test_ha_copy_merges_into_its_native_twin():
     assert devs[0]["is_speaker"] is True and devs[0]["speaker_note"] is None
     assert devs[0]["twins"] == [{"endpoint_id": "e2", "room_id": "g1"}]
     assert devs[0]["twin_entity_id"] == "media_player.bedroom"
+
+
+def test_ha_entity_of_parses_the_bridge_description():
+    assert ac._ha_entity_of("media_player.bedroom via Home Assistant") == "media_player.bedroom"
+    assert ac._ha_entity_of("Sonos player in Bedroom") is None
+    assert ac._ha_entity_of(None) is None
+
+
+def test_echo_and_its_ha_copy_join_by_serial_even_when_names_differ():
+    # Live case: the Echo was renamed "Dining Room Echo Show 5"; its HA copy still says
+    # "Media Room Echo Show 5". The serial (via the HA entity's Alexa Media device) still joins them.
+    board = ac.build_board(
+        [],
+        [
+            _ep("n1", "Dining Room Echo Show 5", "ALEXA_VOICE_ENABLED", device_type="A1",
+                manufacturer="Amazon", serial="G6G1"),
+            _ep("h1", "Media Room Echo Show 5", "TV", manufacturer="Home Assistant",
+                description="media_player.media_room_echo_show_5 via Home Assistant"),
+        ],
+        [_bgroup("g1", "Dining Room", member_ids=["n1", "h1"])],
+        ha_serials={"media_player.media_room_echo_show_5": "G6G1"},
+    )
+    devs = _rooms(board)["Dining Room"]["devices"]
+    assert [d["endpoint_id"] for d in devs] == ["n1"]
+    assert devs[0]["twin_entity_id"] == "media_player.media_room_echo_show_5"
+
+
+def test_protection_follows_the_merged_device():
+    # Live case: the HA copy "This Device" is the phone registered natively as "Will's Device".
+    board = ac.build_board(
+        [],
+        [
+            _ep("n1", "Will's Device", "PHONE", device_type="A1", manufacturer="Amazon", serial="S1"),
+            _ep("h1", "This Device", "TV", manufacturer="Home Assistant",
+                description="media_player.this_device via Home Assistant"),
+        ],
+        [],
+        ha_serials={"media_player.this_device": "S1"},
+    )
+    (d,) = board["unroomed"]
+    assert d["endpoint_id"] == "n1" and d["protected"] is True and d["suggested_remove"] is False
 
 
 def test_ha_copy_without_a_native_twin_stays_flagged():

@@ -25,6 +25,7 @@ from .const import (
     SERVICE_MOVE_DEVICE,
     SERVICE_PREVIEW,
     SERVICE_RECONCILE,
+    SERVICE_RENAME_DEVICE,
     SERVICE_ROOM_OP,
     SERVICE_ROOM_SPEAKERS,
     SERVICE_SET_PREFERRED_SPEAKER,
@@ -41,6 +42,7 @@ _ALL_SERVICES = (
     SERVICE_ROOM_OP,
     SERVICE_MOVE_DEVICE,
     SERVICE_FORGET_ENDPOINT,
+    SERVICE_RENAME_DEVICE,
     SERVICE_SET_PREFERRED_SPEAKER,
     SERVICE_ROOM_SPEAKERS,
     SERVICE_DEBUG_GRAPHQL,
@@ -259,6 +261,23 @@ def _register_services(hass: HomeAssistant) -> None:
         SERVICE_FORGET_ENDPOINT,
         forget_endpoint,
         schema=vol.Schema({vol.Required("endpoint_id"): str}),
+    )
+
+    async def rename_device(call: ServiceCall) -> None:
+        from . import alexa_cloud
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        try:
+            await alexa_cloud.async_rename_endpoint(hass, call.data["endpoint_id"], call.data["name"])
+        except alexa_cloud.AlexaCloudUnavailable as err:
+            raise HomeAssistantError(str(err)) from err
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RENAME_DEVICE,
+        rename_device,
+        schema=vol.Schema({vol.Required("endpoint_id"): str, vol.Required("name"): vol.All(str, vol.Length(min=1))}),
     )
 
     async def set_preferred_speaker(call: ServiceCall) -> None:

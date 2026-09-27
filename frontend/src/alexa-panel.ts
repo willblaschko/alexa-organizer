@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   projectBoard,
+  roomRename,
   type BoardDevice,
   type BoardRoom,
   type Plan,
@@ -95,9 +96,12 @@ export class AlexaPanel extends LitElement {
         type: "alexa_organizer/plan",
       });
       this._plan = p;
-      this._accepted = new Set(
+      const acc = new Set(
         (p.groups ?? []).flatMap((g) => g.ops).filter((o) => o.suggested).map((o) => o.id)
       );
+      // An Echo the plan moves gets its match-the-room rename pre-checked too (opt-out).
+      for (const o of this._renameOps(p.groups ?? [], acc)) acc.add(o.id);
+      this._accepted = acc;
       this._opStatus = {};
       this._userMove = {};
       this._userPref = {};
@@ -153,7 +157,52 @@ export class AlexaPanel extends LitElement {
     return (this._plan?.board.rooms ?? []).some((r) => !!r.id && this._norm(r.name) === this._norm(area));
   }
 
+  // The full change list: the plan + everything staged inline, plus a checkable "rename to
+  // match the room" op for every accepted Echo move (Chorus-style name-follows-room).
   private _effectiveGroups(): PlanGroup[] {
+    const groups = this._mergedGroups();
+    const renames = this._renameOps(groups, this._accepted);
+    if (!renames.length) return groups;
+    const out = [...groups];
+    const at = out.findIndex((g) => g.key === "place");
+    out.splice(at >= 0 ? at + 1 : out.length, 0, {
+      key: "rename", title: "Rename Echos to match their room", destructive: false, ops: renames,
+    });
+    return out;
+  }
+
+  // Rename ops for the accepted moves of Echos (Amazon devices only — a Sonos takes its name
+  // from the Sonos app, and HA devices from HA). Name = the room part swapped for the target
+  // room; clashes get a " 2" suffix. A move that's unchecked drops its rename with it.
+  private _renameOps(groups: PlanGroup[], accepted: Set<string>): PlanOp[] {
+    const b = this._plan?.board;
+    if (!b) return [];
+    const all = [...(b.rooms ?? []).flatMap((r) => r.devices), ...(b.unroomed ?? [])];
+    const byEp = new Map(all.filter((d) => d.endpoint_id).map((d) => [d.endpoint_id as string, d]));
+    const roomNames = (b.rooms ?? []).map((r) => r.name);
+    const roomById = new Map((b.rooms ?? []).filter((r) => r.id).map((r) => [r.id as string, r.name]));
+    const taken = new Set(all.map((d) => d.name));
+    const ops: PlanOp[] = [];
+    for (const o of groups.flatMap((g) => g.ops)) {
+      const a = o.action;
+      if (a.kind !== "move" || !a.endpoint_id || !accepted.has(o.id)) continue;
+      const d = byEp.get(a.endpoint_id);
+      if (!d || !isAmazon(d) || !d.is_speaker) continue; // Echos only — not Fire TVs / phones
+      const target = (a.to && roomById.get(a.to as string)) || (a.area as string) || "";
+      const name = roomRename(d.name, roomNames, target, taken);
+      if (!name) continue;
+      taken.add(name); // two Echos moving into one room get distinct names
+      ops.push({
+        id: `rename:${a.endpoint_id}`, group: "rename",
+        title: `Rename ${d.name} → ${name}`, detail: "",
+        suggested: true, destructive: false,
+        action: { kind: "rename_device", endpoint_id: a.endpoint_id, name },
+      });
+    }
+    return ops;
+  }
+
+  private _mergedGroups(): PlanGroup[] {
     const groups = this._plan?.groups ?? [];
     const touched = Object.keys(this._userMove);
     const prefRooms = Object.keys(this._userPref);
@@ -335,6 +384,12 @@ export class AlexaPanel extends LitElement {
       const area = value.slice(6);
       if (!this._areaHasRoom(area)) acc.add(`room:create:${area}`);
     }
+    // A fresh move of an Echo pre-checks its match-the-room rename (uncheck it in the review
+    // to keep the current name). Re-evaluated on every pick, so the name tracks the target.
+    const renameId = `rename:${endpointId}`;
+    acc.delete(renameId);
+    if (value !== current && this._renameOps(this._mergedGroups(), acc).some((o) => o.id === renameId))
+      acc.add(renameId);
     this._accepted = acc;
   }
 
@@ -435,6 +490,12 @@ export class AlexaPanel extends LitElement {
                     if ((t.room_id ?? "") !== to) await move(t.endpoint_id, t.room_id);
                 })();
               })
+            )
+          );
+        } else if (lane === "rename") {
+          await Promise.all(
+            ops.map((op) =>
+              run(op.id, () => svc("rename_device", { endpoint_id: op.action.endpoint_id, name: op.action.name }))
             )
           );
         } else if (lane === "preferred") {

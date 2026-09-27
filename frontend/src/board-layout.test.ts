@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   layoutBoard,
   projectBoard,
+  roomRename,
   type BoardData,
   type BoardDevice,
   type BoardRoom,
@@ -141,4 +142,41 @@ test("projectBoard reflects an accepted expose op on the matching HA device", ()
     { key: "expose", title: "", destructive: false, ops: [op("expose:light.k", { kind: "expose", entity_id: "light.k", to: true })] },
   ];
   assert.equal(find(projectBoard(b, groups, new Set(["expose:light.k"])), "lamp").exposed, true);
+});
+
+const ROOMS = ["Media Room", "Dining Room", "Bedroom", "Bedroom 2", "Kitchen"];
+
+test("roomRename swaps the room part and keeps the rest", () => {
+  assert.equal(roomRename("Media Room Echo Show 5", ROOMS, "Dining Room", []), "Dining Room Echo Show 5");
+});
+
+test("roomRename prepends the room when the name has none", () => {
+  assert.equal(roomRename("Echo Dot", ROOMS, "Kitchen", []), "Kitchen Echo Dot");
+});
+
+test("roomRename uses the longest matching room prefix", () => {
+  assert.equal(roomRename("Bedroom 2 Dot", ROOMS, "Kitchen", []), "Kitchen Dot");
+});
+
+test("roomRename returns null when the name already fits the room", () => {
+  assert.equal(roomRename("Kitchen Echo Show", ROOMS, "Kitchen", []), null);
+  assert.equal(roomRename("Echo", ROOMS, "", []), null); // moving to no room: no rename
+});
+
+test("roomRename takes a free ' N' suffix on a clash (Chorus convention)", () => {
+  assert.equal(
+    roomRename("Media Room Echo Show 5", ROOMS, "Dining Room", ["Dining Room Echo Show 5", "Media Room Echo Show 5"]),
+    "Dining Room Echo Show 5 2"
+  );
+  // a bare-room name clashes with the room's Sonos → bumped
+  assert.equal(roomRename("Media Room", ROOMS, "Dining Room", ["Dining Room"]), "Dining Room 2");
+});
+
+test("projectBoard shows an accepted rename's new name", () => {
+  const board = { available: true, rooms: [room("g1", "Dining Room", [dev("Media Room Echo Show 5", { endpoint_id: "e1" })])], unroomed: [] };
+  const groups: PlanGroup[] = [{ key: "rename", title: "", destructive: false,
+    ops: [{ id: "rename:e1", group: "rename", title: "", detail: "", suggested: true, destructive: false,
+      action: { kind: "rename_device", endpoint_id: "e1", name: "Dining Room Echo Show 5" } }] }];
+  const laid = projectBoard(board, groups, new Set(["rename:e1"]));
+  assert.equal(laid.rooms[0].devices[0].name, "Dining Room Echo Show 5");
 });

@@ -62,6 +62,21 @@ forget_endpoint:
       selector:
         text:
 
+rename_device:
+  name: Rename an Alexa device
+  description: Rename one Alexa endpoint (the panel uses this to rename an Echo to match the room it moves into). The device keeps its id and room.
+  fields:
+    endpoint_id:
+      name: Endpoint id
+      required: true
+      selector:
+        text:
+    name:
+      name: New name
+      required: true
+      selector:
+        text:
+
 set_preferred_speaker:
   name: Set a room's preferred speaker (experimental)
   description: EXPERIMENTAL — choose which speaker in an Alexa room answers "play music here" (brand-agnostic — an Echo, a Sonos, whatever is in the room). Called per-room by the panel.

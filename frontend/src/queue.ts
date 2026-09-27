@@ -11,6 +11,7 @@ export const LANE_ORDER = [
   "create_room", // make rooms → provides room ids
   "rename_room", // rename rooms (ids stable)
   "place", // put devices in rooms (needs the room to exist; may consume a created id)
+  "rename", // rename an Echo to match the room it just moved into (after its move lands)
   "preferred", // set a room's main speaker (needs it placed)
   "remove", // deregister devices / forget endpoints (destructive)
   "delete_room", // delete rooms last (after their devices have moved out)
@@ -27,6 +28,8 @@ export function laneOf(op: PlanOp): Lane {
       return a.op === "create" ? "create_room" : a.op === "rename" ? "rename_room" : "delete_room";
     case "move":
       return "place";
+    case "rename_device":
+      return "rename";
     case "preferred":
       return "preferred";
     case "remove_device":

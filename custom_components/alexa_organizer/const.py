@@ -34,6 +34,8 @@ SERVICE_ROOM_OP = "room_op"
 SERVICE_MOVE_DEVICE = "move_device"
 # Experimental: remove ONE Alexa smart-home endpoint (per-op, for panel status).
 SERVICE_FORGET_ENDPOINT = "forget_endpoint"
+# Rename ONE Alexa endpoint (used for Echos renamed to match the room they move into).
+SERVICE_RENAME_DEVICE = "rename_device"
 # Experimental: set ONE room's preferred speaker (brand-agnostic — Echo/Sonos/etc.).
 SERVICE_SET_PREFERRED_SPEAKER = "set_preferred_speaker"
 # Read-only diagnostic (returns response): each room's current preferred speaker + candidates.

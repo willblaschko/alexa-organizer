@@ -439,6 +439,18 @@ async def async_set_preferred_speaker(
     )
 
 
+_RENAME = (
+    "mutation r($id:EndpointId!,$n:String!){"
+    "setEndpointFriendlyName(input:{endpointId:$id,friendlyName:$n}){endpoint{id}}}"
+)
+
+
+async def async_rename_endpoint(hass, endpoint_id: str, name: str, email: str | None = None) -> None:
+    """Rename one Alexa endpoint (setEndpointFriendlyName). Verified live on an Echo: the
+    endpoint keeps its id and room; only the friendly name changes."""
+    await async_graphql(hass, {"query": _RENAME, "variables": {"id": endpoint_id, "n": name}}, email)
+
+
 _FORGET = "mutation f($id:EndpointId!){forgetEndpoint(forgetEndpointInput:{endpointId:$id}){endpointId}}"
 
 
@@ -465,6 +477,7 @@ def _suggest_room(name: str, rooms: list[dict]) -> str | None:
 _ENDPOINTS_QUERY = (
     "query{listEndpoints(listEndpointsInput:{}){endpoints{id friendlyNameObject{value{text}} "
     "displayCategories{primary{value}} manufacturer{value{text}} "
+    "serialNumber{value{text}} description{value{text}} "
     "legacyIdentifiers{chrsIdentifier{entityId} "
     "dmsIdentifier{deviceType{value{text}}}}}}}"
 )
@@ -575,22 +588,39 @@ def _endpoint_view(e: dict) -> dict:
         "chrs": ((leg.get("chrsIdentifier") or {}).get("entityId")) or "",
         "device_type": (((dms.get("deviceType") or {}).get("value") or {}).get("text")) or None,
         "manufacturer": ((e.get("manufacturer") or {}).get("value") or {}).get("text") or "",
+        "serial": ((e.get("serialNumber") or {}).get("value") or {}).get("text") or None,
+        "ha_entity": _ha_entity_of(((e.get("description") or {}).get("value") or {}).get("text")),
     }
 
 
-def build_board(ha_rows, endpoints, groups, live_ids=None):
+_VIA_HA = " via Home Assistant"
+
+
+def _ha_entity_of(description: str | None) -> str | None:
+    """The HA entity behind a Home-Assistant-bridged endpoint. HA's Alexa bridge always sets
+    the description to "<entity_id> via Home Assistant" — an exact ID, no name guessing."""
+    if description and description.endswith(_VIA_HA):
+        return description[: -len(_VIA_HA)].strip() or None
+    return None
+
+
+def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
     """Join HA exposure + Alexa endpoints + Alexa groups into a room-centric board.
 
     PURE. Args are plain dicts already fetched by the caller:
-      ha_rows   — inventory rows {entity_id, name, domain, area, desired, exposed, ghost,
-                  names?} (names = optional lowercased aliases incl. the live friendly_name).
-      endpoints — raw listEndpoints endpoints.
-      groups    — raw listDeviceGroups.
+      ha_rows    — inventory rows {entity_id, name, domain, area, desired, exposed, ghost,
+                   names?} (names = optional lowercased aliases incl. the live friendly_name).
+      endpoints  — raw listEndpoints endpoints.
+      groups     — raw listDeviceGroups.
+      ha_serials — {HA entity_id: Echo serial} for HA entities that ARE an Echo (via the
+                   Alexa Media Player integration's device identifiers). Lets an HA copy be
+                   joined to its Echo by serial — survives renames, unlike names.
 
     Returns {rooms: [...], unroomed: [...]}. Each device row carries a `source`
     ("ha" | "alexa" | "echo") and the ids each inline action needs.
     """
     live_ids = live_ids or set()
+    ha_serials = ha_serials or {}
     eps = [_endpoint_view(e) for e in endpoints]
 
     # Alexa group membership + preferred speaker per room.
@@ -666,6 +696,8 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             # brand for the UI badge. A Sonos linked via the Sonos-Alexa skill carries an Amazon
             # device_type (so source=="echo"), so device_type/source can't name the brand; this can.
             "manufacturer": e.get("manufacturer") or "",
+            "serial": e.get("serial"),  # device serial (Echoes) — the cross-system join key
+            "ha_entity": e.get("ha_entity"),  # for an HA-bridged copy: the exact HA entity_id
         }
         if e["device_type"] is not None:
             fl = acct_flags.get(e["id"], {})
@@ -692,26 +724,37 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
     ep_rows = [device_row(e) for e in eps]
 
     # One physical device, one row. Home Assistant re-exposes devices Alexa already has
-    # natively (an Echo, a Sonos via the Sonos skill) as a separate "Home Assistant" endpoint of
-    # the same name. Fold each such copy into its native twin so every action (move, remove)
-    # can fan out to both — otherwise a move relocates one and strands the other. Only an
-    # UNAMBIGUOUS name match merges (exactly one native of that name); anything else stays
-    # separate rather than risk merging two different devices.
+    # natively (an Echo, a Sonos via the Sonos skill) as a separate "Home Assistant" endpoint.
+    # Fold each such copy into its native twin so every action (move, remove) fans out to both.
+    # Join by ID first: the copy names its HA entity, and if that entity is an Echo (Alexa
+    # Media Player), its serial matches the Echo's endpoint serial — survives renames. Only
+    # devices without a shared ID (Sonos) fall back to an UNAMBIGUOUS exact-name match.
+    natives_by_serial: dict[str, dict] = {}
     natives_by_name: dict[str, list[dict]] = {}
     for r in ep_rows:
         if not _is_ha_proxy(r["manufacturer"]):
+            if r.get("serial"):
+                natives_by_serial[r["serial"]] = r
             natives_by_name.setdefault(_norm(r["name"]), []).append(r)
     merged_rows: list[dict] = []
     for r in ep_rows:
         if _is_ha_proxy(r["manufacturer"]):
-            twins = natives_by_name.get(_norm(r["name"]), [])
-            if len(twins) == 1:
-                native = twins[0]
+            native = natives_by_serial.get(ha_serials.get(r.get("ha_entity") or "") or "")
+            if native is None:
+                by_name = natives_by_name.get(_norm(r["name"]), [])
+                native = by_name[0] if len(by_name) == 1 else None
+            if native is not None:
                 native.setdefault("twins", []).append(
                     {"endpoint_id": r["endpoint_id"], "room_id": r["room_id"]}
                 )
-                if r.get("entity_id"):
-                    native["twin_entity_id"] = r["entity_id"]  # so "remove" can un-expose it
+                # Protection follows the DEVICE: a copy named "This Device" protects the phone
+                # it belongs to, whatever the native is called ("Will's Device").
+                if r.get("protected"):
+                    native["protected"] = True
+                    native["suggested_remove"] = False
+                ent = r.get("ha_entity") or r.get("entity_id")
+                if ent:
+                    native["twin_entity_id"] = ent  # so "remove" can un-expose it
                 continue
         merged_rows.append(r)
     ep_rows = merged_rows
@@ -1060,6 +1103,25 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
     }
 
 
+def _ha_echo_serials(hass, endpoints: list[dict]) -> dict[str, str]:
+    """{HA entity_id: Echo serial} for every HA-bridged endpoint whose HA entity belongs to an
+    Echo (the Alexa Media Player integration identifies its devices by serial). This is the
+    exact join between an HA copy and the native Echo — no names involved."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    ents, devs = er.async_get(hass), dr.async_get(hass)
+    out: dict[str, str] = {}
+    for e in endpoints:
+        entity_id = _ha_entity_of(((e.get("description") or {}).get("value") or {}).get("text"))
+        ent = ents.async_get(entity_id) if entity_id else None
+        dev = devs.async_get(ent.device_id) if ent and ent.device_id else None
+        for domain, ident in (dev.identifiers if dev else ()):
+            if domain == "alexa_media":
+                out[entity_id] = ident
+                break
+    return out
+
+
 async def async_plan(hass, email: str | None = None) -> dict:
     """The whole opinion, computed once: the board + the grouped change list.
 
@@ -1089,7 +1151,7 @@ async def async_plan(hass, email: str | None = None) -> dict:
     except AlexaCloudUnavailable:
         groups, endpoints, alexa_ok = [], [], False
 
-    board = build_board(rows, endpoints, groups)
+    board = build_board(rows, endpoints, groups, ha_serials=_ha_echo_serials(hass, endpoints))
     room_ops = plan_room_sync(ha_area_names(hass), groups) if alexa_ok else []
     plan = assemble_plan(board, rows, room_ops)
     return {"available": alexa_ok, "board": board, **plan}
