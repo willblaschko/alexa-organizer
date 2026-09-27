@@ -416,9 +416,11 @@ async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
 
     info: dict[str, dict] = {}
     for e in eps:
+        dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier") or {}
         info[e["id"]] = {
             "name": ((e.get("friendlyNameObject") or {}).get("value") or {}).get("text") or e["id"],
             "category": ((e.get("displayCategories") or {}).get("primary") or {}).get("value") or "",
+            "device_type": (((dms.get("deviceType") or {}).get("value") or {}).get("text")) or "",
         }
 
     out: list[dict] = []
@@ -429,6 +431,7 @@ async def async_room_speakers(hass, email: str | None = None) -> list[dict]:
                 "endpointId": mid,
                 "name": info.get(mid, {}).get("name", mid),
                 "category": info.get(mid, {}).get("category", ""),
+                "device_type": info.get(mid, {}).get("device_type", ""),
                 "is_speaker": info.get(mid, {}).get("category") in _SPEAKER_CATEGORIES,
             }
             for mid in member_ids
