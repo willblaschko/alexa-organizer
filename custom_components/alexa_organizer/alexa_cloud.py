@@ -647,17 +647,12 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
 
     ep_rows = [device_row(e) for e in eps]
 
-    # Collapse duplicate speakers. One physical Echo can surface as BOTH a native Amazon
-    # endpoint (source "echo") and an HA-bridged media_player twin (a smart-home endpoint of
-    # the same friendly name). The native endpoint is the real music sink; the twin is a
-    # control shadow that can't be set as a group's preferred speaker. Offer "make main" only
-    # on the native one — strip the twin's speaker affordance so a room shows one main-speaker
-    # choice per physical device, not two.
-    echo_speaker_names = {_norm(r["name"]) for r in ep_rows if r["source"] == "echo" and r["is_speaker"]}
-    for r in ep_rows:
-        if r["source"] != "echo" and r["is_speaker"] and _norm(r["name"]) in echo_speaker_names:
-            r["is_speaker"] = False
-            r["speaker_shadow"] = True  # a duplicate of a native Echo; FE may note it
+    # NOTE: no speaker de-duplication here. A name-based collapse (hide an HA-source speaker
+    # when a native Echo shares its name) wrongly merged distinct devices that share a room
+    # name — e.g. a Sonos named "Bedroom" and an Echo named "Bedroom" — and hid a real
+    # main-speaker option. Reliable de-duping needs a same-physical-device key (e.g. the HA
+    # entity's integration/platform), which isn't threaded through here yet. Until then we
+    # show every speaker-capable endpoint: a cosmetic dup beats hiding a real speaker.
 
     # HA-exposed entities that never surfaced as an Alexa endpoint (not synced yet).
     unsynced: list[dict] = []

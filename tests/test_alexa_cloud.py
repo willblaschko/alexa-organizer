@@ -474,29 +474,14 @@ def test_set_speaker_query_rejects_unknown_type():
     raise AssertionError("expected ValueError for unknown speaker type")
 
 
-def test_board_collapses_ha_twin_of_native_echo_speaker():
-    # A native Echo (deviceType) and its HA-bridged media_player twin share a name in one room.
-    # Only the native endpoint keeps the "make main" affordance; the twin is a shadow.
+def test_board_same_named_sonos_and_echo_both_stay_selectable():
+    # A Sonos and an Echo that share a room name ("Bedroom") are DIFFERENT physical devices;
+    # neither may be hidden as a main-speaker option (the name-collapse regression).
     board = ac.build_board(
-        [_row("media_player.bedroom_echo", "Bedroom Echo Show", "media_player", "Bedroom")],
+        [_row("media_player.bedroom_sonos", "Bedroom", "media_player", "Bedroom")],
         [
-            _ep("e1", "Bedroom Echo Show", "ALEXA_VOICE_ENABLED", device_type="A1RABVCI4QCIKC"),
-            _ep("e2", "Bedroom Echo Show", "SPEAKER"),  # HA-bridged twin, no deviceType
-        ],
-        [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
-    )
-    devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
-    assert devs["e1"]["source"] == "echo" and devs["e1"]["is_speaker"]  # native = the speaker
-    assert devs["e2"]["is_speaker"] is False and devs["e2"].get("speaker_shadow")  # twin collapsed
-
-
-def test_board_distinct_speakers_are_not_collapsed():
-    # Two genuinely different speakers (different names) both stay selectable.
-    board = ac.build_board(
-        [],
-        [
-            _ep("e1", "Bedroom Echo", "ALEXA_VOICE_ENABLED", device_type="A1"),
-            _ep("e2", "Bedroom Sonos", "SPEAKER"),
+            _ep("e1", "Bedroom", "SPEAKER"),  # the Sonos, exposed via HA (no deviceType)
+            _ep("e2", "Bedroom", "ALEXA_VOICE_ENABLED", device_type="A1"),  # a native Echo named "Bedroom"
         ],
         [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
     )
