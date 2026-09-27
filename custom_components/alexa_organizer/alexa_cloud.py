@@ -747,6 +747,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
     # Alexa group membership + preferred speaker per room.
     ep_room: dict[str, str] = {}
     preferred: dict[str, str] = {}
+    targeting: dict[str, str] = {}  # room id → playMusicTargetingType (ALL_THE_TIME / ONLY_WHEN…)
     group_by_norm: dict[str, dict] = {}
     for g in groups:
         rid = g.get("id") or ""
@@ -755,13 +756,12 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
         for m in (g.get("memberDevices") or {}).get("items") or []:
             if m.get("id"):
                 ep_room[m["id"]] = rid
-        sel = [
-            s.get("endpointId")
-            for s in ((g.get("speakerConfiguration") or {}).get("selectedSpeakers") or [])
-            if s.get("endpointId")
-        ]
+        sc = g.get("speakerConfiguration") or {}
+        sel = [s.get("endpointId") for s in (sc.get("selectedSpeakers") or []) if s.get("endpointId")]
         if sel:
             preferred[rid] = sel[0]
+        if sc.get("playMusicTargetingType"):
+            targeting[rid] = sc["playMusicTargetingType"]
 
     # HA exposure indexed by every name it answers to, plus the set of HA areas.
     ha_by_name: dict[str, dict] = {}
@@ -875,6 +875,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
                 "in_alexa": grp is not None,
                 "in_ha": key in ha_areas,
                 "preferred_id": preferred.get(rid) if rid else None,
+                "targeting": targeting.get(rid) if rid else None,
                 "devices": devices,
             }
         )

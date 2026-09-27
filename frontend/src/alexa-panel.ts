@@ -527,6 +527,9 @@ export class AlexaPanel extends LitElement {
     // Preferred-speaker control: only for a speaker that's a member of a real Alexa room.
     const canBeMain = d.is_speaker && !!d.endpoint_id && !!room.id && !d._removing;
     const isMain = canBeMain && this._effectivePreferred(room) === d.endpoint_id;
+    // Staging a pick writes ALL_THE_TIME; otherwise use the room's current targeting mode.
+    const always =
+      (room.id && room.id in this._userPref ? "ALL_THE_TIME" : room.targeting) === "ALL_THE_TIME";
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
         <div class="info">
@@ -539,15 +542,17 @@ export class AlexaPanel extends LitElement {
           </div>
         </div>
         ${canBeMain
-          ? isMain
-            ? html`<span class="mainbadge" title="Answers “play music here”">♪ plays here</span>`
+          ? isMain && always
+            ? html`<span class="mainbadge" title="Always answers “play music here”">♪ plays here</span>`
             : html`<button
-                class="mainbtn"
+                class="mainbtn ${isMain ? "warn" : ""}"
                 ?disabled=${this._applying}
-                title="Make this the room's “play music here” speaker"
+                title=${isMain
+                  ? "Only plays here when you say the room name — tap to make it play here by default"
+                  : "Make this the room's speaker for “play music here”"}
                 @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
               >
-                make main
+                ${isMain ? "only when named · play here always" : "make main"}
               </button>`
           : nothing}
         ${d.endpoint_id && !d._removing
@@ -753,18 +758,28 @@ export class AlexaPanel extends LitElement {
       column-gap: 22px;
     }
     .room .kindgroup {
+      --kind: var(--secondary-text-color, #6b7280);
       min-width: 0;
       margin: 0 0 18px;
       display: flow-root; /* own block-formatting context — no margin-clip at a column top */
       -webkit-column-break-inside: avoid;
       break-inside: avoid; /* keep a section together within a column */
     }
+    /* Color-coded section header: the kind's color as the LABEL + hairline only — no box,
+       no rail, no tinted fill (that reads as AI-generated). */
     .room .kindgroup .gcap {
-      color: var(--secondary-text-color, #6b7280);
+      color: var(--kind);
       margin: 0;
       padding-bottom: 5px;
-      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+      border-bottom: 2px solid color-mix(in srgb, var(--kind) 55%, transparent);
     }
+    .room .kind-lighting { --kind: #d08700; }
+    .room .kind-speakers { --kind: #2f6fed; }
+    .room .kind-climate  { --kind: #0f9d9d; }
+    .room .kind-scenes   { --kind: #7c4dde; }
+    .room .kind-other    { --kind: #6b7280; }
+    .room .kind-echo     { --kind: #b06f2e; }
+    .room .kind-alexa    { --kind: #9333ea; }
     .room .kindgroup .rows {
       background: transparent;
       border-radius: 0;
@@ -812,6 +827,11 @@ export class AlexaPanel extends LitElement {
     .mainbtn:hover {
       border-color: var(--primary-color, #2f6fed);
       color: var(--primary-color, #2f6fed);
+    }
+    /* Already the preferred speaker, but only when the room is named — nudge to make it always. */
+    .mainbtn.warn {
+      border-color: color-mix(in srgb, var(--warning-color, #e0a72e) 60%, transparent);
+      color: var(--warning-color, #b8860b);
     }
     .mainbadge {
       flex: none;
