@@ -116,6 +116,13 @@ def test_annotate_protects_amp_and_application():
     assert all(r["protected"] for r in rows)
 
 
+def test_annotate_protects_this_device_and_audible():
+    # Q's rule: never remove "This Device" (the app you're on) or Audible registrations.
+    rows = {r["name"]: r for r in ac.annotate_devices([_dev("This Device"), _dev("Will's Audible for iPhone")])}
+    assert rows["This Device"]["protected"] and rows["This Device"]["suggested_remove"] is False
+    assert rows["Will's Audible for iPhone"]["protected"] and rows["Will's Audible for iPhone"]["suggested_remove"] is False
+
+
 def test_annotate_flags_companion_app_cruft():
     rows = {r["name"]: r for r in ac.annotate_devices([_dev("Will's 3rd Android Device"), _dev("Kitchen")])}
     assert rows["Will's 3rd Android Device"]["suggested_remove"] is True
@@ -129,25 +136,29 @@ def test_annotate_flags_duplicate_names():
 
 
 def test_categorize_derives_from_annotation():
-    cats = ac.categorize_devices([_dev("Kitchen"), _dev("Will's Alexa Media Player"), _dev("Will's Audible for iPhone")])
+    # Audible is now protected (kept), so a phone "Android Device" reg is the junk example.
+    cats = ac.categorize_devices([_dev("Kitchen"), _dev("Will's Alexa Media Player"), _dev("Will's 3rd Android Device")])
     assert [d["name"] for d in cats["keep"]] == ["Kitchen"]
     assert [d["name"] for d in cats["protected"]] == ["Will's Alexa Media Player"]
-    assert [d["name"] for d in cats["junk"]] == ["Will's Audible for iPhone"]
+    assert [d["name"] for d in cats["junk"]] == ["Will's 3rd Android Device"]
 
 
 # ── build_board (the aggregated room-centric join) ────────────────────────────
 
 
-def _ep(eid, name, category="", chrs="", device_type=None):
+def _ep(eid, name, category="", chrs="", device_type=None, manufacturer=None):
     leg = {"chrsIdentifier": {"entityId": chrs}}
     if device_type is not None:
         leg["dmsIdentifier"] = {"deviceType": {"value": {"text": device_type}}}
-    return {
+    e = {
         "id": eid,
         "friendlyNameObject": {"value": {"text": name}},
         "displayCategories": {"primary": {"value": category}},
         "legacyIdentifiers": leg,
     }
+    if manufacturer is not None:
+        e["manufacturer"] = {"value": {"text": manufacturer}}
+    return e
 
 
 def _bgroup(gid, name, member_ids=(), preferred=None):
@@ -444,17 +455,36 @@ def test_board_matches_via_name_alias():
     assert devs[0]["source"] == "ha" and devs[0]["entity_id"] == "light.k"
 
 
-# ── preferred-speaker type selection (the INTERNAL_FRAMEWORK_FAILURE fix) ───────
-def test_speaker_type_echo_is_alexa_device():
-    # An Echo carries an Amazon deviceType => ALEXA_DEVICE (NOT THIRD_PARTY).
-    assert ac._speaker_type_for("ECHO_SHOW") == "ALEXA_DEVICE"
-    assert ac._speaker_type_for("A1RABVCI4QCIKC") == "ALEXA_DEVICE"
+# ── preferred-speaker type selection (keyed off MANUFACTURER, not device_type) ──
+def test_speaker_type_amazon_is_alexa_device():
+    # Amazon's own devices (Echo/Dot/Show) => ALEXA_DEVICE.
+    assert ac._speaker_type_for("Amazon") == "ALEXA_DEVICE"
 
 
 def test_speaker_type_partner_is_third_party():
-    # Sonos / partner speakers have no deviceType => THIRD_PARTY.
+    # Every partner speaker is THIRD_PARTY — including Sonos/Symfonisk linked via the Sonos
+    # skill, which carry an Amazon device_type but manufacturer "Sonos, Inc." (the real bug:
+    # device_type presence is NOT the signal).
+    assert ac._speaker_type_for("Sonos, Inc.") == "THIRD_PARTY"
     assert ac._speaker_type_for(None) == "THIRD_PARTY"
     assert ac._speaker_type_for("") == "THIRD_PARTY"
+
+
+def test_ha_proxy_endpoint_is_not_a_speaker_candidate():
+    # A Home-Assistant-bridged proxy (manufacturer "Home Assistant") duplicates a real device
+    # and Alexa rejects it as a group speaker — so it must NOT be a main-speaker option, while
+    # the native Sonos of the same name stays selectable.
+    board = ac.build_board(
+        [_row("media_player.bedroom", "Bedroom", "media_player", "Bedroom")],
+        [
+            _ep("e1", "Bedroom", "ALEXA_VOICE_ENABLED", device_type="A15ERDAKK5HQQG", manufacturer="Sonos, Inc."),
+            _ep("e2", "Bedroom", "SPEAKER", manufacturer="Home Assistant"),  # HA proxy of the Sonos
+        ],
+        [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
+    )
+    devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
+    assert devs["e1"]["is_speaker"] is True   # native Sonos = selectable
+    assert devs["e2"]["is_speaker"] is False  # HA proxy = not offered
 
 
 def test_set_speaker_query_inlines_enum_literal_and_always():

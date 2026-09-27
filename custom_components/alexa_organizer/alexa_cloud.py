@@ -309,21 +309,37 @@ async def async_move_device(
 # ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
 _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
 
+# Manufacturer of endpoints that Home Assistant bridges into Alexa (Nabu Casa / HA cloud).
+# These are PROXIES of a device HA controls — Alexa cannot route music to them, so setting
+# one as a room's preferred speaker fails INTERNAL_FRAMEWORK_FAILURE. They also duplicate a
+# device that often has a native Alexa endpoint too (e.g. a Sonos linked via the Sonos skill),
+# so we never offer them as a main-speaker option. Verified live against Q's account.
+_HA_PROXY_MANUFACTURER = "home assistant"
+
+
+def _is_ha_proxy(manufacturer: str | None) -> bool:
+    """True if this endpoint is a Home-Assistant-bridged proxy (not a real Alexa speaker sink)."""
+    return (manufacturer or "").strip().lower() == _HA_PROXY_MANUFACTURER
+
+
 # Valid GroupEndpointSpeakerType enum values (verified live by introspection). The schema
 # hides the type NAME, so the value must be inlined as a LITERAL in the query text (a typed
 # variable "$t:GroupEndpointSpeakerType!" fails "Unknown type") — hence the string builder
-# below. Picking the wrong type fails INTERNAL_FRAMEWORK_FAILURE (e.g. calling an Echo
-# THIRD_PARTY), so it must match the actual device.
+# below. NB: Alexa accepts BOTH ALEXA_DEVICE and THIRD_PARTY for a real endpoint (verified
+# live), so the enum is not what fails a set — an HA-proxy endpoint is (see _is_ha_proxy).
+# We still send the semantically-correct type: Amazon first-party => ALEXA_DEVICE, every
+# partner speaker (Sonos/Symfonisk/etc.) => THIRD_PARTY, keyed off the manufacturer.
 _SPEAKER_TYPES = frozenset(
     {"ALEXA_DEVICE", "BONDED_CLUSTER", "MULTI_ROOM_MUSIC_CLUSTER", "THIRD_PARTY", "UNKNOWN"}
 )
 
 
-def _speaker_type_for(device_type: str | None) -> str:
-    """The GroupEndpointSpeakerType for an endpoint. Amazon devices (Echo/Dot/Show) carry a
-    dmsIdentifier deviceType and are ALEXA_DEVICE; partner speakers (Sonos, etc.) have none
-    and are THIRD_PARTY. Same signal as the source="echo" tag in build_board."""
-    return "ALEXA_DEVICE" if device_type else "THIRD_PARTY"
+def _speaker_type_for(manufacturer: str | None) -> str:
+    """The GroupEndpointSpeakerType for an endpoint, from its manufacturer. Amazon's own
+    devices (Echo/Dot/Show) are ALEXA_DEVICE; every partner speaker is THIRD_PARTY — INCLUDING
+    Sonos/Symfonisk linked via the Sonos-Alexa skill, which carry an Amazon device_type yet are
+    still third-party. device_type presence is NOT the signal; manufacturer is."""
+    return "ALEXA_DEVICE" if "amazon" in (manufacturer or "").strip().lower() else "THIRD_PARTY"
 
 
 def _set_speaker_query(speaker_type: str) -> str:
@@ -402,20 +418,20 @@ async def async_set_preferred_speaker(
 ) -> None:
     """Set one room's preferred speaker (brand-agnostic — Echo, Sonos, whatever's in the room).
 
-    The speaker's GroupEndpointSpeakerType must match the actual device or Alexa fails with
-    INTERNAL_FRAMEWORK_FAILURE. When not given, we look the endpoint up and derive it from
-    whether it carries an Amazon deviceType (Echo => ALEXA_DEVICE, else THIRD_PARTY).
+    We send the semantically-correct GroupEndpointSpeakerType (Amazon => ALEXA_DEVICE, partner
+    => THIRD_PARTY), derived from the endpoint's manufacturer. NOTE: the endpoint must be one
+    Alexa can route music to — an HA-bridged proxy (manufacturer "Home Assistant") is rejected
+    with INTERNAL_FRAMEWORK_FAILURE, which is why build_board never offers proxies as speakers.
     """
     if speaker_type is None:
         node = await async_graphql(hass, {"query": _ENDPOINTS_QUERY}, email)
         eps = (((node.get("data") or {}).get("listEndpoints") or {}).get("endpoints")) or []
-        device_type: str | None = None
+        manufacturer = ""
         for e in eps:
             if e.get("id") == endpoint_id:
-                dms = (e.get("legacyIdentifiers") or {}).get("dmsIdentifier") or {}
-                device_type = ((dms.get("deviceType") or {}).get("value") or {}).get("text")
+                manufacturer = ((e.get("manufacturer") or {}).get("value") or {}).get("text") or ""
                 break
-        speaker_type = _speaker_type_for(device_type)
+        speaker_type = _speaker_type_for(manufacturer)
     await async_graphql(
         hass,
         {"query": _set_speaker_query(speaker_type), "variables": {"id": room_id, "ep": endpoint_id}},
@@ -448,7 +464,8 @@ def _suggest_room(name: str, rooms: list[dict]) -> str | None:
 
 _ENDPOINTS_QUERY = (
     "query{listEndpoints(listEndpointsInput:{}){endpoints{id friendlyNameObject{value{text}} "
-    "displayCategories{primary{value}} legacyIdentifiers{chrsIdentifier{entityId} "
+    "displayCategories{primary{value}} manufacturer{value{text}} "
+    "legacyIdentifiers{chrsIdentifier{entityId} "
     "dmsIdentifier{deviceType{value{text}}}}}}}"
 )
 
@@ -459,12 +476,15 @@ _ENDPOINTS_QUERY = (
 #   protected        — must never be removed (kills our session, or the web login).
 #   suggested_remove — likely-stale: a companion-app/phone/simulator entry, or a DUPLICATE
 #                      name (the 2nd+ device sharing a friendly name). Default only.
-_PROTECT_NAME = ("alexa media player", "alexa web")
+# Never-remove registrations. "this device" is the Alexa app on the device you're using
+# (removing it can drop your session); "audible" registrations are kept by request; the
+# alexa-media-player / web logins keep our own API session alive.
+_PROTECT_NAME = ("alexa media player", "alexa web", "this device", "audible")
 _PROTECT_CATEGORY = ("APPLICATION",)
 # Generic companion-app / non-speaker registration markers (product-name-agnostic).
 _APP_CRUFT = (
-    "android device", "audible", "amazon alexa on", "alexa app", "for iphone",
-    "for android", "simulator", "this device",
+    "android device", "amazon alexa on", "alexa app", "for iphone",
+    "for android", "simulator",
 )
 
 
@@ -546,6 +566,7 @@ def _endpoint_view(e: dict) -> dict:
         "category": ((e.get("displayCategories") or {}).get("primary") or {}).get("value") or "",
         "chrs": ((leg.get("chrsIdentifier") or {}).get("entityId")) or "",
         "device_type": (((dms.get("deviceType") or {}).get("value") or {}).get("text")) or None,
+        "manufacturer": ((e.get("manufacturer") or {}).get("value") or {}).get("text") or "",
     }
 
 
@@ -615,7 +636,10 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             "domain": None,
             "exposed": None,
             "room_id": rid,
-            "is_speaker": e["category"] in _SPEAKER_CATEGORIES,
+            # A real main-speaker option must be an endpoint Alexa can route music to. HA-proxy
+            # media_players (manufacturer "Home Assistant") are duplicates Alexa rejects, so they
+            # are never speaker candidates — the native endpoint (Sonos skill, Echo, …) is.
+            "is_speaker": e["category"] in _SPEAKER_CATEGORIES and not _is_ha_proxy(e.get("manufacturer")),
             "is_preferred": bool(rid and preferred.get(rid) == e["id"]),
             "synced": True,
             "protected": False,
