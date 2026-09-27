@@ -485,6 +485,8 @@ def test_ha_proxy_endpoint_is_not_a_speaker_candidate():
     devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
     assert devs["e1"]["is_speaker"] is True   # native Sonos = selectable
     assert devs["e2"]["is_speaker"] is False  # HA proxy = not offered
+    assert devs["e1"]["speaker_note"] is None       # native = no warning
+    assert devs["e2"]["speaker_note"] == "ha_proxy"  # proxy = flagged for the "!" UI
 
 
 def test_set_speaker_query_inlines_enum_literal_and_always():

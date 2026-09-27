@@ -640,6 +640,13 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
             # media_players (manufacturer "Home Assistant") are duplicates Alexa rejects, so they
             # are never speaker candidates — the native endpoint (Sonos skill, Echo, …) is.
             "is_speaker": e["category"] in _SPEAKER_CATEGORIES and not _is_ha_proxy(e.get("manufacturer")),
+            # A would-be speaker that's ONLY a Home Assistant proxy: flagged so the UI can show
+            # "!" — Alexa can't play to it; link the device natively (e.g. the Sonos skill) to use it.
+            "speaker_note": (
+                "ha_proxy"
+                if e["category"] in _SPEAKER_CATEGORIES and _is_ha_proxy(e.get("manufacturer"))
+                else None
+            ),
             "is_preferred": bool(rid and preferred.get(rid) == e["id"]),
             "synced": True,
             "protected": False,

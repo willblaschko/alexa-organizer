@@ -11,6 +11,7 @@ export interface BoardDevice {
   room_id: string | null;
   area?: string | null;
   is_speaker: boolean;
+  speaker_note?: string | null; // "ha_proxy" = a would-be speaker Alexa can't play to (HA copy)
   is_preferred: boolean;
   synced: boolean;
   protected: boolean;

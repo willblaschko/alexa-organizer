@@ -540,6 +540,13 @@ export class AlexaPanel extends LitElement {
           <div class="name ${d._removing ? "strike" : ""}">${d.name}</div>
           <div class="meta">
             <span class="kind">${chip}</span>
+            ${d.speaker_note === "ha_proxy"
+              ? html`<span
+                  class="warnpill"
+                  title="This is a Home Assistant copy of the speaker — Alexa can't play to it, so it can't be a room's main. The natively-linked speaker (e.g. via the Sonos skill) is the one to use."
+                  >! not an Alexa speaker</span
+                >`
+              : nothing}
             ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
             ${!d.synced ? html`<span class="reason">will sync to Alexa</span>` : nothing}
             ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
@@ -1014,6 +1021,17 @@ export class AlexaPanel extends LitElement {
     }
     .reason.danger {
       color: var(--error-color, #d33);
+    }
+    .warnpill {
+      color: var(--warning-color, #b76e00);
+      background: color-mix(in srgb, var(--warning-color, #b76e00) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #b76e00) 35%, transparent);
+      border-radius: 999px;
+      padding: 0 7px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: help;
+      white-space: nowrap;
     }
     .row.removing {
       opacity: 0.7;
