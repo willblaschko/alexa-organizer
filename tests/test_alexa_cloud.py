@@ -485,23 +485,73 @@ def test_speaker_type_partner_is_third_party():
     assert ac._speaker_type_for("") == "THIRD_PARTY"
 
 
-def test_ha_proxy_endpoint_is_not_a_speaker_candidate():
-    # A Home-Assistant-bridged proxy (manufacturer "Home Assistant") duplicates a real device
-    # and Alexa rejects it as a group speaker — so it must NOT be a main-speaker option, while
-    # the native Sonos of the same name stays selectable.
+def test_ha_copy_merges_into_its_native_twin():
+    # One physical Sonos = a native endpoint + an HA copy of the same name. They become ONE
+    # row (the native, selectable as main) that remembers its twin so actions fan out to both.
     board = ac.build_board(
         [_row("media_player.bedroom", "Bedroom", "media_player", "Bedroom")],
         [
             _ep("e1", "Bedroom", "ALEXA_VOICE_ENABLED", device_type="A15ERDAKK5HQQG", manufacturer="Sonos, Inc."),
-            _ep("e2", "Bedroom", "SPEAKER", manufacturer="Home Assistant"),  # HA proxy of the Sonos
+            _ep("e2", "Bedroom", "SPEAKER", manufacturer="Home Assistant"),  # HA copy of the Sonos
         ],
         [_bgroup("g1", "Bedroom", member_ids=["e1", "e2"])],
     )
-    devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
-    assert devs["e1"]["is_speaker"] is True   # native Sonos = selectable
-    assert devs["e2"]["is_speaker"] is False  # HA proxy = not offered
-    assert devs["e1"]["speaker_note"] is None       # native = no warning
-    assert devs["e2"]["speaker_note"] == "ha_proxy"  # proxy = flagged for the "!" UI
+    devs = _rooms(board)["Bedroom"]["devices"]
+    assert [d["endpoint_id"] for d in devs] == ["e1"]  # one row, not two
+    assert devs[0]["is_speaker"] is True and devs[0]["speaker_note"] is None
+    assert devs[0]["twins"] == [{"endpoint_id": "e2", "room_id": "g1"}]
+    assert devs[0]["twin_entity_id"] == "media_player.bedroom"
+
+
+def test_ha_copy_without_a_native_twin_stays_flagged():
+    # A speaker that exists ONLY in HA can't merge — it stays its own row, not playable.
+    board = ac.build_board(
+        [], [_ep("e2", "Patio", "SPEAKER", manufacturer="Home Assistant")],
+        [_bgroup("g1", "Patio", member_ids=["e2"])],
+    )
+    d = _rooms(board)["Patio"]["devices"][0]
+    assert d["is_speaker"] is False and d["speaker_note"] == "ha_proxy"
+
+
+def test_ambiguous_name_does_not_merge():
+    # Two natives share the name → we can't tell which the HA copy belongs to: don't merge.
+    board = ac.build_board(
+        [],
+        [
+            _ep("n1", "Den", "ALEXA_VOICE_ENABLED", device_type="A1", manufacturer="Amazon"),
+            _ep("n2", "Den", "ALEXA_VOICE_ENABLED", device_type="A2", manufacturer="Sonos, Inc."),
+            _ep("h1", "Den", "SPEAKER", manufacturer="Home Assistant"),
+        ],
+        [_bgroup("g1", "Den", member_ids=["n1", "n2", "h1"])],
+    )
+    assert {d["endpoint_id"] for d in _rooms(board)["Den"]["devices"]} == {"n1", "n2", "h1"}
+
+
+def test_plan_pulls_a_split_twin_back_to_its_device():
+    # The native is in Dining Room but its HA copy was left in Media Room → move the copy over.
+    echo = _bdev("Media Room Echo Show 5", "echo", endpoint_id="n1", room_id="dr")
+    echo["twins"] = [{"endpoint_id": "h1", "room_id": "mr"}]
+    plan = ac.assemble_plan({"rooms": [_broom("dr", "Dining Room", [echo]), _broom("mr", "Media Room", [])],
+                             "unroomed": []}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert [o["action"] for o in ops] == [{"kind": "move", "endpoint_id": "h1", "from": "mr", "to": "dr"}]
+
+
+def test_plan_roomless_device_adopts_its_copys_room():
+    # Native has no room, its HA copy is in Kitchen → put the native in Kitchen (don't evict the copy).
+    echo = _bdev("Kitchen Echo Show", "echo", endpoint_id="n1", room_id=None)
+    echo["twins"] = [{"endpoint_id": "h1", "room_id": "k"}]
+    plan = ac.assemble_plan({"rooms": [_broom("k", "Kitchen", [])], "unroomed": [echo]}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert [o["action"] for o in ops] == [{"kind": "move", "endpoint_id": "n1", "from": None, "to": "k"}]
+
+
+def test_plan_does_not_name_guess_a_device_that_already_has_a_room():
+    # Named after Media Room but deliberately placed in Dining Room: leave it there.
+    echo = _bdev("Media Room Echo Show 5", "echo", endpoint_id="n1", room_id="dr")
+    plan = ac.assemble_plan({"rooms": [_broom("dr", "Dining Room", [echo]), _broom("mr", "Media Room", [])],
+                             "unroomed": []}, [], [])
+    assert "place" not in _groups(plan) or not _groups(plan)["place"]["ops"]
 
 
 def test_set_speaker_query_inlines_enum_literal_and_always():

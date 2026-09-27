@@ -691,6 +691,31 @@ def build_board(ha_rows, endpoints, groups, live_ids=None):
 
     ep_rows = [device_row(e) for e in eps]
 
+    # One physical device, one row. Home Assistant re-exposes devices Alexa already has
+    # natively (an Echo, a Sonos via the Sonos skill) as a separate "Home Assistant" endpoint of
+    # the same name. Fold each such copy into its native twin so every action (move, remove)
+    # can fan out to both — otherwise a move relocates one and strands the other. Only an
+    # UNAMBIGUOUS name match merges (exactly one native of that name); anything else stays
+    # separate rather than risk merging two different devices.
+    natives_by_name: dict[str, list[dict]] = {}
+    for r in ep_rows:
+        if not _is_ha_proxy(r["manufacturer"]):
+            natives_by_name.setdefault(_norm(r["name"]), []).append(r)
+    merged_rows: list[dict] = []
+    for r in ep_rows:
+        if _is_ha_proxy(r["manufacturer"]):
+            twins = natives_by_name.get(_norm(r["name"]), [])
+            if len(twins) == 1:
+                native = twins[0]
+                native.setdefault("twins", []).append(
+                    {"endpoint_id": r["endpoint_id"], "room_id": r["room_id"]}
+                )
+                if r.get("entity_id"):
+                    native["twin_entity_id"] = r["entity_id"]  # so "remove" can un-expose it
+                continue
+        merged_rows.append(r)
+    ep_rows = merged_rows
+
     # NOTE: no speaker de-duplication here. A name-based collapse (hide an HA-source speaker
     # when a native Echo shares its name) wrongly merged distinct devices that share a room
     # name — e.g. a Sonos named "Bedroom" and an Echo named "Bedroom" — and hid a real
@@ -909,11 +934,15 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                 })
             continue
         # Which HA area does this device belong to? HA area for matched devices (the truth);
-        # a name-matched area otherwise (Echoes/strays named after their room).
+        # a name-matched area otherwise (Echoes/strays named after their room) — but ONLY for a
+        # device with no room yet. A name is a weak hint; an explicit room assignment beats it
+        # (else "Media Room Echo Show 5", moved to Dining Room, gets pushed back every sync).
         if d.get("source") == "ha" and d.get("area"):
             area_name = d["area"]
-        else:
+        elif not d.get("room_id"):
             area_name = _suggest_room(d.get("name", ""), area_suggest)
+        else:
+            area_name = None
         if not area_name:
             continue  # can't tell where it goes
         target = area_to_room.get(_norm(area_name))
@@ -935,6 +964,37 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
                 "suggested": True, "destructive": False,
                 "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": "", "area": area_name},
             })
+
+    # 3b. Keep a device's parts together. If a merged device and its Home Assistant copy sit in
+    # different rooms (a half-finished move), reunite them — unless the device is already being
+    # moved (that move carries its twins along). The device's own room wins; if it has none,
+    # it adopts the room its copy is in (never pull the copy OUT of a room).
+    moving = {o["action"]["endpoint_id"] for o in g["place"]}
+    for d in all_devices:
+        eid = d.get("endpoint_id")
+        if not eid or eid in moving:
+            continue
+        for t in d.get("twins") or []:
+            if t["room_id"] == d.get("room_id"):
+                continue
+            if d.get("room_id"):
+                g["place"].append({
+                    "id": f"move:{t['endpoint_id']}", "group": "place",
+                    "title": f"Keep {d.get('name')} together",
+                    "detail": "its Home Assistant copy is in a different room",
+                    "suggested": True, "destructive": False,
+                    "action": {"kind": "move", "endpoint_id": t["endpoint_id"],
+                               "from": t["room_id"], "to": d["room_id"]},
+                })
+            else:
+                g["place"].append({
+                    "id": f"move:{eid}", "group": "place",
+                    "title": f"Put {d.get('name')} in the same room as its copy", "detail": "",
+                    "suggested": True, "destructive": False,
+                    "action": {"kind": "move", "endpoint_id": eid, "from": None, "to": t["room_id"]},
+                })
+                moving.add(eid)
+                break
 
     # 4. Preferred speaker — the room's main Echo, when unset and unambiguous.
     for r in rooms:

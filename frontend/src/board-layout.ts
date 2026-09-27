@@ -12,6 +12,10 @@ export interface BoardDevice {
   area?: string | null;
   is_speaker: boolean;
   manufacturer?: string; // real brand, e.g. "Sonos, Inc." / "Amazon" / "Home Assistant"
+  // The same physical device's Home Assistant copy (a separate Alexa endpoint), folded into
+  // this row. Every action on the device fans out to these too.
+  twins?: { endpoint_id: string; room_id: string | null }[];
+  twin_entity_id?: string | null; // the HA entity behind the copy (so "remove" can un-expose it)
   speaker_note?: string | null; // "ha_proxy" = a would-be speaker Alexa can't play to (HA copy)
   is_preferred: boolean;
   synced: boolean;

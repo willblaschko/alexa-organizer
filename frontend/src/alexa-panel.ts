@@ -129,6 +129,14 @@ export class AlexaPanel extends LitElement {
     return m;
   }
 
+  // The other Alexa endpoints of the same physical device (its HA copy), from the pristine board.
+  private _twinsOf(endpointId: string): { endpoint_id: string; room_id: string | null }[] {
+    const b = this._plan?.board;
+    for (const d of [...(b?.rooms ?? []).flatMap((r) => r.devices), ...(b?.unroomed ?? [])])
+      if (d.endpoint_id === endpointId) return d.twins ?? [];
+    return [];
+  }
+
   private _deviceName(endpointId: string): string {
     const b = this._plan?.board;
     for (const d of [...(b?.rooms ?? []).flatMap((r) => r.devices), ...(b?.unroomed ?? [])])
@@ -265,46 +273,52 @@ export class AlexaPanel extends LitElement {
       .map((r) => ({ value: (r.id as string) || `#area#${r.name}`, name: r.name }));
   }
 
-  // The removal op for a device, by what it actually is: an Amazon device is deregistered,
-  // a smart-home endpoint is forgotten, and an HA-exposed device is un-exposed (stop sending
-  // it to Alexa). Returns null if there's nothing removable (e.g. an unsynced HA row).
-  private _removalOp(d: BoardDevice): PlanOp | null {
-    if (d.source === "ha" && d.entity_id) {
-      return {
-        id: `expose:${d.entity_id}`, group: "expose",
-        title: `Stop sending ${d.name} to Alexa`, detail: "removes the Home Assistant copy",
-        suggested: true, destructive: true,
-        action: { kind: "expose", entity_id: d.entity_id, to: false },
-      };
-    }
-    if (!d.endpoint_id) return null;
-    if (d.source === "echo") {
-      return {
-        id: `rmdev:${d.endpoint_id}`, group: "cleanup_devices",
-        title: `Delete ${d.name}`, detail: "removes this device from Alexa",
-        suggested: true, destructive: true,
-        action: { kind: "remove_device", endpoint_id: d.endpoint_id },
-      };
-    }
-    return {
-      id: `rmep:${d.endpoint_id}`, group: "cleanup_endpoints",
-      title: `Delete ${d.name}`, detail: "removes this from Alexa",
+  // Every op needed to remove a device, by what it actually is: an Amazon device is
+  // deregistered, a smart-home endpoint is forgotten, an HA-exposed device is un-exposed. A
+  // merged device ALSO stops exposing its HA copy, so removing it clears both. Empty if there's
+  // nothing removable (e.g. an unsynced HA row).
+  private _removalOps(d: BoardDevice): PlanOp[] {
+    const unexpose = (entity_id: string, title: string): PlanOp => ({
+      id: `expose:${entity_id}`, group: "expose",
+      title, detail: "removes the Home Assistant copy",
       suggested: true, destructive: true,
-      action: { kind: "remove_endpoint", endpoint_id: d.endpoint_id },
-    };
+      action: { kind: "expose", entity_id, to: false },
+    });
+    if (d.source === "ha" && d.entity_id) return [unexpose(d.entity_id, `Stop sending ${d.name} to Alexa`)];
+    if (!d.endpoint_id) return [];
+    const ops: PlanOp[] = [
+      d.source === "echo"
+        ? {
+            id: `rmdev:${d.endpoint_id}`, group: "cleanup_devices",
+            title: `Delete ${d.name}`, detail: "removes this device from Alexa",
+            suggested: true, destructive: true,
+            action: { kind: "remove_device", endpoint_id: d.endpoint_id },
+          }
+        : {
+            id: `rmep:${d.endpoint_id}`, group: "cleanup_endpoints",
+            title: `Delete ${d.name}`, detail: "removes this from Alexa",
+            suggested: true, destructive: true,
+            action: { kind: "remove_endpoint", endpoint_id: d.endpoint_id },
+          },
+    ];
+    if (d.twin_entity_id) ops.push(unexpose(d.twin_entity_id, `Stop sending ${d.name}'s Home Assistant copy`));
+    return ops;
   }
 
   private _onRemove(d: BoardDevice): void {
-    const op = this._removalOp(d);
-    if (!op) return;
+    const ops = this._removalOps(d);
+    if (!ops.length) return;
     const staged = { ...this._userRemove };
     const accepted = new Set(this._accepted);
-    if (op.id in staged) {
-      delete staged[op.id]; // toggle off — keep the device
-      accepted.delete(op.id);
-    } else {
-      staged[op.id] = op;
-      accepted.add(op.id);
+    const on = !(ops[0].id in staged); // toggle the whole device together
+    for (const op of ops) {
+      if (on) {
+        staged[op.id] = op;
+        accepted.add(op.id);
+      } else {
+        delete staged[op.id];
+        accepted.delete(op.id);
+      }
     }
     this._userRemove = staged;
     this._accepted = accepted;
@@ -407,10 +421,19 @@ export class AlexaPanel extends LitElement {
                   to = roomForArea.get(norm(a.area)) ?? "";
                   if (!to) throw new Error("room not created"); // don't strand: skip if create failed
                 }
-                const data: Record<string, unknown> = { endpoint_id: a.endpoint_id };
-                if (a.from) data.from = a.from;
-                if (to) data.to = to;
-                return svc("move_device", data);
+                const move = (endpoint_id: unknown, from: unknown) => {
+                  const data: Record<string, unknown> = { endpoint_id };
+                  if (from) data.from = from;
+                  if (to) data.to = to;
+                  return svc("move_device", data);
+                };
+                // One physical device: move it, then carry its HA copy to the same room so the
+                // two never split (skip a twin that's already there).
+                return (async () => {
+                  await move(a.endpoint_id, a.from);
+                  for (const t of this._twinsOf(a.endpoint_id as string))
+                    if ((t.room_id ?? "") !== to) await move(t.endpoint_id, t.room_id);
+                })();
               })
             )
           );
@@ -611,7 +634,7 @@ export class AlexaPanel extends LitElement {
     const always =
       (room.id && room.id in this._userPref ? "ALWAYS" : room.targeting) === "ALWAYS";
     // Inline delete: never for protected devices (This Device / Audible / the AMP session).
-    const rmOp = d.protected ? null : this._removalOp(d);
+    const rmOp = d.protected ? null : (this._removalOps(d)[0] ?? null);
     const rmStaged = !!rmOp && rmOp.id in this._userRemove;
     return html`
       <div class="row ${d._removing ? "removing" : ""}">
