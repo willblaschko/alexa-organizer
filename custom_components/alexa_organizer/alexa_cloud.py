@@ -397,10 +397,14 @@ async def async_board(hass, email: str | None = None) -> dict:
 # ALEXA_VOICE_ENABLED, Sonos and other approved audio show as SPEAKER).
 _SPEAKER_CATEGORIES = frozenset({"ALEXA_VOICE_ENABLED", "SPEAKER"})
 
+# Enums (PRIMARY, ALL_THE_TIME) are inlined as literals rather than typed variables —
+# the schema doesn't expose the enum type NAMES ("Unknown type 'PlayMusicTargetingType'"),
+# but it validates the literal values fine. Only the plain strings are variables.
 _SET_SPEAKER = (
-    "mutation s($id:String!,$spk:[GroupEndpointSpeakerInput!]!,$t:PlayMusicTargetingType!){"
-    "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,selectedSpeakers:$spk,"
-    "playMusicTargetingType:$t}){playMusicTargetingType selectedSpeakers{type endpointId}}}"
+    "mutation s($id:String!,$ep:String!){"
+    "updateDeviceGroupSpeakerConfiguration(input:{deviceGroupId:$id,"
+    "selectedSpeakers:[{type:PRIMARY,endpointId:$ep}],playMusicTargetingType:ALL_THE_TIME})"
+    "{playMusicTargetingType selectedSpeakers{type endpointId}}}"
 )
 
 
@@ -462,10 +466,9 @@ async def async_set_preferred_speaker(
     hass, room_id: str, endpoint_id: str, email: str | None = None
 ) -> None:
     """Set one room's preferred speaker (brand-agnostic — Echo, Sonos, whatever's in the room)."""
-    speakers = [{"type": "PRIMARY", "endpointId": endpoint_id}]
     await async_graphql(
         hass,
-        {"query": _SET_SPEAKER, "variables": {"id": room_id, "spk": speakers, "t": "ALL_THE_TIME"}},
+        {"query": _SET_SPEAKER, "variables": {"id": room_id, "ep": endpoint_id}},
         email,
     )
 
