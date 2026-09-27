@@ -678,13 +678,20 @@ export class AlexaPanel extends LitElement {
     >();
     for (const d of devices) {
       let key: string, label: string, kind: string, order: number;
-      if (d.source === "echo" || d.source === "alexa") {
-        // Section header = the reported manufacturer (verbatim), falling back to a generic
-        // label when blank. Color/order is the only thing keyed off "is it Amazon" — a hue
-        // choice, not a claim about the device's name.
+      if (d.is_speaker) {
+        // Real, playable Alexa speakers (native — Echo, or Sonos via the Sonos skill). The
+        // per-row chip still shows the maker (Amazon / Sonos, Inc.); the section names the source.
+        [key, label, kind, order] = ["spk_alexa", "From Alexa (playable)", "speakers", 1];
+      } else if (d.speaker_note === "ha_proxy") {
+        // Home Assistant copies of a speaker — Alexa can't play to them. Grouped + dimmed so
+        // it's obvious they're duplicates from HA, not something to set as the main.
+        [key, label, kind, order] = ["spk_hacopy", "From Home Assistant (copies)", "hacopy", 1.5];
+      } else if (d.source === "echo" || d.source === "alexa") {
+        // Non-speaker Alexa devices (a Fire TV, etc.): header = the reported manufacturer,
+        // verbatim (fallback to a generic label when blank).
         label = d.manufacturer?.trim() || (d.source === "echo" ? "Echo" : "Alexa-only");
-        kind = isAmazon(d) ? "echo" : d.source === "echo" ? "speakers" : "alexa";
-        order = isAmazon(d) ? 90 : d.source === "echo" ? 89 : 91;
+        kind = isAmazon(d) ? "echo" : "alexa";
+        order = isAmazon(d) ? 90 : 91;
         key = "brand:" + label;
       } else {
         const i = d.domain ? kindIndex(d.domain) : KIND_GROUPS.length - 1;
@@ -884,6 +891,9 @@ export class AlexaPanel extends LitElement {
     .room .kind-other    { --kind: #6b7280; }
     .room .kind-echo     { --kind: #b06f2e; }
     .room .kind-alexa    { --kind: #9333ea; }
+    .room .kind-hacopy   { --kind: #9aa0a6; }
+    /* HA copies of a speaker: present for clarity, but visibly secondary to the real ones. */
+    .room .kindgroup.kind-hacopy { opacity: 0.7; }
     .room .kindgroup .rows {
       background: transparent;
       border-radius: 0;
