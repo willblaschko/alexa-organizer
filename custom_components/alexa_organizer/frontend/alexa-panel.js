@@ -1,62 +1,117 @@
-function e(e,t,o,r){var i,n=arguments.length,s=n<3?t:null===r?r=Object.getOwnPropertyDescriptor(t,o):r;if("object"==typeof Reflect&&"function"==typeof Reflect.decorate)s=Reflect.decorate(e,t,o,r);else for(var a=e.length-1;a>=0;a--)(i=e[a])&&(s=(n<3?i(s):n>3?i(t,o,s):i(t,o))||s);return n>3&&s&&Object.defineProperty(t,o,s),s}"function"==typeof SuppressedError&&SuppressedError;const t=globalThis,o=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,r=Symbol(),i=new WeakMap;let n=class{constructor(e,t,o){if(this._$cssResult$=!0,o!==r)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=e,this.t=t}get styleSheet(){let e=this.o;const t=this.t;if(o&&void 0===e){const o=void 0!==t&&1===t.length;o&&(e=i.get(t)),void 0===e&&((this.o=e=new CSSStyleSheet).replaceSync(this.cssText),o&&i.set(t,e))}return e}toString(){return this.cssText}};const s=o?e=>e:e=>e instanceof CSSStyleSheet?(e=>{let t="";for(const o of e.cssRules)t+=o.cssText;return(e=>new n("string"==typeof e?e:e+"",void 0,r))(t)})(e):e,{is:a,defineProperty:d,getOwnPropertyDescriptor:c,getOwnPropertyNames:p,getOwnPropertySymbols:l,getPrototypeOf:h}=Object,u=globalThis,m=u.trustedTypes,f=m?m.emptyScript:"",g=u.reactiveElementPolyfillSupport,_=(e,t)=>e,v={toAttribute(e,t){switch(t){case Boolean:e=e?f:null;break;case Object:case Array:e=null==e?e:JSON.stringify(e)}return e},fromAttribute(e,t){let o=e;switch(t){case Boolean:o=null!==e;break;case Number:o=null===e?null:Number(e);break;case Object:case Array:try{o=JSON.parse(e)}catch(e){o=null}}return o}},x=(e,t)=>!a(e,t),b={attribute:!0,type:String,converter:v,reflect:!1,useDefault:!1,hasChanged:x};Symbol.metadata??=Symbol("metadata"),u.litPropertyMetadata??=new WeakMap;let y=class extends HTMLElement{static addInitializer(e){this._$Ei(),(this.l??=[]).push(e)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(e,t=b){if(t.state&&(t.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(e)&&((t=Object.create(t)).wrapped=!0),this.elementProperties.set(e,t),!t.noAccessor){const o=Symbol(),r=this.getPropertyDescriptor(e,o,t);void 0!==r&&d(this.prototype,e,r)}}static getPropertyDescriptor(e,t,o){const{get:r,set:i}=c(this.prototype,e)??{get(){return this[t]},set(e){this[t]=e}};return{get:r,set(t){const n=r?.call(this);i?.call(this,t),this.requestUpdate(e,n,o)},configurable:!0,enumerable:!0}}static getPropertyOptions(e){return this.elementProperties.get(e)??b}static _$Ei(){if(this.hasOwnProperty(_("elementProperties")))return;const e=h(this);e.finalize(),void 0!==e.l&&(this.l=[...e.l]),this.elementProperties=new Map(e.elementProperties)}static finalize(){if(this.hasOwnProperty(_("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(_("properties"))){const e=this.properties,t=[...p(e),...l(e)];for(const o of t)this.createProperty(o,e[o])}const e=this[Symbol.metadata];if(null!==e){const t=litPropertyMetadata.get(e);if(void 0!==t)for(const[e,o]of t)this.elementProperties.set(e,o)}this._$Eh=new Map;for(const[e,t]of this.elementProperties){const o=this._$Eu(e,t);void 0!==o&&this._$Eh.set(o,e)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(e){const t=[];if(Array.isArray(e)){const o=new Set(e.flat(1/0).reverse());for(const e of o)t.unshift(s(e))}else void 0!==e&&t.push(s(e));return t}static _$Eu(e,t){const o=t.attribute;return!1===o?void 0:"string"==typeof o?o:"string"==typeof e?e.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(e=>this.enableUpdating=e),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(e=>e(this))}addController(e){(this._$EO??=new Set).add(e),void 0!==this.renderRoot&&this.isConnected&&e.hostConnected?.()}removeController(e){this._$EO?.delete(e)}_$E_(){const e=new Map,t=this.constructor.elementProperties;for(const o of t.keys())this.hasOwnProperty(o)&&(e.set(o,this[o]),delete this[o]);e.size>0&&(this._$Ep=e)}createRenderRoot(){const e=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((e,r)=>{if(o)e.adoptedStyleSheets=r.map(e=>e instanceof CSSStyleSheet?e:e.styleSheet);else for(const o of r){const r=document.createElement("style"),i=t.litNonce;void 0!==i&&r.setAttribute("nonce",i),r.textContent=o.cssText,e.appendChild(r)}})(e,this.constructor.elementStyles),e}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(e=>e.hostConnected?.())}enableUpdating(e){}disconnectedCallback(){this._$EO?.forEach(e=>e.hostDisconnected?.())}attributeChangedCallback(e,t,o){this._$AK(e,o)}_$ET(e,t){const o=this.constructor.elementProperties.get(e),r=this.constructor._$Eu(e,o);if(void 0!==r&&!0===o.reflect){const i=(void 0!==o.converter?.toAttribute?o.converter:v).toAttribute(t,o.type);this._$Em=e,null==i?this.removeAttribute(r):this.setAttribute(r,i),this._$Em=null}}_$AK(e,t){const o=this.constructor,r=o._$Eh.get(e);if(void 0!==r&&this._$Em!==r){const e=o.getPropertyOptions(r),i="function"==typeof e.converter?{fromAttribute:e.converter}:void 0!==e.converter?.fromAttribute?e.converter:v;this._$Em=r;const n=i.fromAttribute(t,e.type);this[r]=n??this._$Ej?.get(r)??n,this._$Em=null}}requestUpdate(e,t,o,r=!1,i){if(void 0!==e){const n=this.constructor;if(!1===r&&(i=this[e]),o??=n.getPropertyOptions(e),!((o.hasChanged??x)(i,t)||o.useDefault&&o.reflect&&i===this._$Ej?.get(e)&&!this.hasAttribute(n._$Eu(e,o))))return;this.C(e,t,o)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(e,t,{useDefault:o,reflect:r,wrapped:i},n){o&&!(this._$Ej??=new Map).has(e)&&(this._$Ej.set(e,n??t??this[e]),!0!==i||void 0!==n)||(this._$AL.has(e)||(this.hasUpdated||o||(t=void 0),this._$AL.set(e,t)),!0===r&&this._$Em!==e&&(this._$Eq??=new Set).add(e))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(e){Promise.reject(e)}const e=this.scheduleUpdate();return null!=e&&await e,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[e,t]of this._$Ep)this[e]=t;this._$Ep=void 0}const e=this.constructor.elementProperties;if(e.size>0)for(const[t,o]of e){const{wrapped:e}=o,r=this[t];!0!==e||this._$AL.has(t)||void 0===r||this.C(t,void 0,o,r)}}let e=!1;const t=this._$AL;try{e=this.shouldUpdate(t),e?(this.willUpdate(t),this._$EO?.forEach(e=>e.hostUpdate?.()),this.update(t)):this._$EM()}catch(t){throw e=!1,this._$EM(),t}e&&this._$AE(t)}willUpdate(e){}_$AE(e){this._$EO?.forEach(e=>e.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(e)),this.updated(e)}_$EM(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(e){return!0}update(e){this._$Eq&&=this._$Eq.forEach(e=>this._$ET(e,this[e])),this._$EM()}updated(e){}firstUpdated(e){}};y.elementStyles=[],y.shadowRootOptions={mode:"open"},y[_("elementProperties")]=new Map,y[_("finalized")]=new Map,g?.({ReactiveElement:y}),(u.reactiveElementVersions??=[]).push("2.1.2");const w=globalThis,$=e=>e,k=w.trustedTypes,A=k?k.createPolicy("lit-html",{createHTML:e=>e}):void 0,S="$lit$",E=`lit$${Math.random().toFixed(9).slice(2)}$`,P="?"+E,C=`<${P}>`,M=document,O=()=>M.createComment(""),R=e=>null===e||"object"!=typeof e&&"function"!=typeof e,z=Array.isArray,H="[ \t\n\f\r]",U=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,N=/-->/g,T=/>/g,j=RegExp(`>|${H}(?:([^\\s"'>=/]+)(${H}*=${H}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),L=/'/g,D=/"/g,B=/^(?:script|style|textarea|title)$/i,G=(e=>(t,...o)=>({_$litType$:e,strings:t,values:o}))(1),I=Symbol.for("lit-noChange"),W=Symbol.for("lit-nothing"),V=new WeakMap,q=M.createTreeWalker(M,129);function F(e,t){if(!z(e)||!e.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==A?A.createHTML(t):t}const J=(e,t)=>{const o=e.length-1,r=[];let i,n=2===t?"<svg>":3===t?"<math>":"",s=U;for(let t=0;t<o;t++){const o=e[t];let a,d,c=-1,p=0;for(;p<o.length&&(s.lastIndex=p,d=s.exec(o),null!==d);)p=s.lastIndex,s===U?"!--"===d[1]?s=N:void 0!==d[1]?s=T:void 0!==d[2]?(B.test(d[2])&&(i=RegExp("</"+d[2],"g")),s=j):void 0!==d[3]&&(s=j):s===j?">"===d[0]?(s=i??U,c=-1):void 0===d[1]?c=-2:(c=s.lastIndex-d[2].length,a=d[1],s=void 0===d[3]?j:'"'===d[3]?D:L):s===D||s===L?s=j:s===N||s===T?s=U:(s=j,i=void 0);const l=s===j&&e[t+1].startsWith("/>")?" ":"";n+=s===U?o+C:c>=0?(r.push(a),o.slice(0,c)+S+o.slice(c)+E+l):o+E+(-2===c?t:l)}return[F(e,n+(e[o]||"<?>")+(2===t?"</svg>":3===t?"</math>":"")),r]};class K{constructor({strings:e,_$litType$:t},o){let r;this.parts=[];let i=0,n=0;const s=e.length-1,a=this.parts,[d,c]=J(e,t);if(this.el=K.createElement(d,o),q.currentNode=this.el.content,2===t||3===t){const e=this.el.content.firstChild;e.replaceWith(...e.childNodes)}for(;null!==(r=q.nextNode())&&a.length<s;){if(1===r.nodeType){if(r.hasAttributes())for(const e of r.getAttributeNames())if(e.endsWith(S)){const t=c[n++],o=r.getAttribute(e).split(E),s=/([.?@])?(.*)/.exec(t);a.push({type:1,index:i,name:s[2],strings:o,ctor:"."===s[1]?ee:"?"===s[1]?te:"@"===s[1]?oe:Q}),r.removeAttribute(e)}else e.startsWith(E)&&(a.push({type:6,index:i}),r.removeAttribute(e));if(B.test(r.tagName)){const e=r.textContent.split(E),t=e.length-1;if(t>0){r.textContent=k?k.emptyScript:"";for(let o=0;o<t;o++)r.append(e[o],O()),q.nextNode(),a.push({type:2,index:++i});r.append(e[t],O())}}}else if(8===r.nodeType)if(r.data===P)a.push({type:2,index:i});else{let e=-1;for(;-1!==(e=r.data.indexOf(E,e+1));)a.push({type:7,index:i}),e+=E.length-1}i++}}static createElement(e,t){const o=M.createElement("template");return o.innerHTML=e,o}}function Y(e,t,o=e,r){if(t===I)return t;let i=void 0!==r?o._$Co?.[r]:o._$Cl;const n=R(t)?void 0:t._$litDirective$;return i?.constructor!==n&&(i?._$AO?.(!1),void 0===n?i=void 0:(i=new n(e),i._$AT(e,o,r)),void 0!==r?(o._$Co??=[])[r]=i:o._$Cl=i),void 0!==i&&(t=Y(e,i._$AS(e,t.values),i,r)),t}class Z{constructor(e,t){this._$AV=[],this._$AN=void 0,this._$AD=e,this._$AM=t}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(e){const{el:{content:t},parts:o}=this._$AD,r=(e?.creationScope??M).importNode(t,!0);q.currentNode=r;let i=q.nextNode(),n=0,s=0,a=o[0];for(;void 0!==a;){if(n===a.index){let t;2===a.type?t=new X(i,i.nextSibling,this,e):1===a.type?t=new a.ctor(i,a.name,a.strings,this,e):6===a.type&&(t=new re(i,this,e)),this._$AV.push(t),a=o[++s]}n!==a?.index&&(i=q.nextNode(),n++)}return q.currentNode=M,r}p(e){let t=0;for(const o of this._$AV)void 0!==o&&(void 0!==o.strings?(o._$AI(e,o,t),t+=o.strings.length-2):o._$AI(e[t])),t++}}class X{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(e,t,o,r){this.type=2,this._$AH=W,this._$AN=void 0,this._$AA=e,this._$AB=t,this._$AM=o,this.options=r,this._$Cv=r?.isConnected??!0}get parentNode(){let e=this._$AA.parentNode;const t=this._$AM;return void 0!==t&&11===e?.nodeType&&(e=t.parentNode),e}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(e,t=this){e=Y(this,e,t),R(e)?e===W||null==e||""===e?(this._$AH!==W&&this._$AR(),this._$AH=W):e!==this._$AH&&e!==I&&this._(e):void 0!==e._$litType$?this.$(e):void 0!==e.nodeType?this.T(e):(e=>z(e)||"function"==typeof e?.[Symbol.iterator])(e)?this.k(e):this._(e)}O(e){return this._$AA.parentNode.insertBefore(e,this._$AB)}T(e){this._$AH!==e&&(this._$AR(),this._$AH=this.O(e))}_(e){this._$AH!==W&&R(this._$AH)?this._$AA.nextSibling.data=e:this.T(M.createTextNode(e)),this._$AH=e}$(e){const{values:t,_$litType$:o}=e,r="number"==typeof o?this._$AC(e):(void 0===o.el&&(o.el=K.createElement(F(o.h,o.h[0]),this.options)),o);if(this._$AH?._$AD===r)this._$AH.p(t);else{const e=new Z(r,this),o=e.u(this.options);e.p(t),this.T(o),this._$AH=e}}_$AC(e){let t=V.get(e.strings);return void 0===t&&V.set(e.strings,t=new K(e)),t}k(e){z(this._$AH)||(this._$AH=[],this._$AR());const t=this._$AH;let o,r=0;for(const i of e)r===t.length?t.push(o=new X(this.O(O()),this.O(O()),this,this.options)):o=t[r],o._$AI(i),r++;r<t.length&&(this._$AR(o&&o._$AB.nextSibling,r),t.length=r)}_$AR(e=this._$AA.nextSibling,t){for(this._$AP?.(!1,!0,t);e!==this._$AB;){const t=$(e).nextSibling;$(e).remove(),e=t}}setConnected(e){void 0===this._$AM&&(this._$Cv=e,this._$AP?.(e))}}class Q{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(e,t,o,r,i){this.type=1,this._$AH=W,this._$AN=void 0,this.element=e,this.name=t,this._$AM=r,this.options=i,o.length>2||""!==o[0]||""!==o[1]?(this._$AH=Array(o.length-1).fill(new String),this.strings=o):this._$AH=W}_$AI(e,t=this,o,r){const i=this.strings;let n=!1;if(void 0===i)e=Y(this,e,t,0),n=!R(e)||e!==this._$AH&&e!==I,n&&(this._$AH=e);else{const r=e;let s,a;for(e=i[0],s=0;s<i.length-1;s++)a=Y(this,r[o+s],t,s),a===I&&(a=this._$AH[s]),n||=!R(a)||a!==this._$AH[s],a===W?e=W:e!==W&&(e+=(a??"")+i[s+1]),this._$AH[s]=a}n&&!r&&this.j(e)}j(e){e===W?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,e??"")}}class ee extends Q{constructor(){super(...arguments),this.type=3}j(e){this.element[this.name]=e===W?void 0:e}}class te extends Q{constructor(){super(...arguments),this.type=4}j(e){this.element.toggleAttribute(this.name,!!e&&e!==W)}}class oe extends Q{constructor(e,t,o,r,i){super(e,t,o,r,i),this.type=5}_$AI(e,t=this){if((e=Y(this,e,t,0)??W)===I)return;const o=this._$AH,r=e===W&&o!==W||e.capture!==o.capture||e.once!==o.once||e.passive!==o.passive,i=e!==W&&(o===W||r);r&&this.element.removeEventListener(this.name,this,o),i&&this.element.addEventListener(this.name,this,e),this._$AH=e}handleEvent(e){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,e):this._$AH.handleEvent(e)}}class re{constructor(e,t,o){this.element=e,this.type=6,this._$AN=void 0,this._$AM=t,this.options=o}get _$AU(){return this._$AM._$AU}_$AI(e){Y(this,e)}}const ie=w.litHtmlPolyfillSupport;ie?.(K,X),(w.litHtmlVersions??=[]).push("3.3.3");const ne=globalThis;class se extends y{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const e=super.createRenderRoot();return this.renderOptions.renderBefore??=e.firstChild,e}update(e){const t=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(e),this._$Do=((e,t,o)=>{const r=o?.renderBefore??t;let i=r._$litPart$;if(void 0===i){const e=o?.renderBefore??null;r._$litPart$=i=new X(t.insertBefore(O(),e),e,void 0,o??{})}return i._$AI(e),i})(t,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return I}}se._$litElement$=!0,se.finalized=!0,ne.litElementHydrateSupport?.({LitElement:se});const ae=ne.litElementPolyfillSupport;ae?.({LitElement:se}),(ne.litElementVersions??=[]).push("4.2.2");const de={attribute:!0,type:String,converter:v,reflect:!1,hasChanged:x},ce=(e=de,t,o)=>{const{kind:r,metadata:i}=o;let n=globalThis.litPropertyMetadata.get(i);if(void 0===n&&globalThis.litPropertyMetadata.set(i,n=new Map),"setter"===r&&((e=Object.create(e)).wrapped=!0),n.set(o.name,e),"accessor"===r){const{name:r}=o;return{set(o){const i=t.get.call(this);t.set.call(this,o),this.requestUpdate(r,i,e,!0,o)},init(t){return void 0!==t&&this.C(r,void 0,e,t),t}}}if("setter"===r){const{name:r}=o;return function(o){const i=this[r];t.call(this,o),this.requestUpdate(r,i,e,!0,o)}}throw Error("Unsupported decorator location: "+r)};function pe(e){return(t,o)=>"object"==typeof o?ce(e,t,o):((e,t,o)=>{const r=t.hasOwnProperty(o);return t.constructor.createProperty(o,e),r?Object.getOwnPropertyDescriptor(t,o):void 0})(e,t,o)}function le(e){return pe({...e,state:!0,attribute:!1})}function he(e,t,o,r){const i=e=>e.trim().toLowerCase(),n=e.trim();if(!o.trim())return null;let s=n;const a=[...t].filter(e=>e.trim()).sort((e,t)=>t.length-e.length).find(e=>{const t=i(n),o=i(e);return t===o||t.startsWith(o+" ")});a&&(s=n.slice(a.trim().length).trim());const d=s?`${o.trim()} ${s}`:o.trim();if(i(d)===i(n))return null;const c=new Set([...r].map(i));if(c.delete(i(n)),!c.has(i(d)))return d;for(let e=2;;e++){const t=`${d} ${e}`;if(!c.has(i(t)))return t}}const ue=["expose","create_room","rename_room","place","rename","preferred","remove","delete_room"];function me(e){const t=e.action;switch(t.kind){case"expose":return"expose";case"room_op":return"create"===t.op?"create_room":"rename"===t.op?"rename_room":"delete_room";case"move":return"place";case"rename_device":return"rename";case"preferred":return"preferred";case"remove_device":case"remove_endpoint":return"remove"}}const fe={media_player:"Speaker",light:"Light",switch:"Switch",climate:"Climate",scene:"Scene",script:"Script",cover:"Cover",fan:"Fan",vacuum:"Vacuum",lock:"Lock",camera:"Camera",input_boolean:"Toggle"},ge=[{label:"Lighting",domains:["light","switch"]},{label:"Speakers",domains:["media_player"]},{label:"Climate",domains:["climate","fan"]},{label:"Scenes & routines",domains:["scene","script"]},{label:"Other",domains:["cover","vacuum","lock","camera","input_boolean"]}],_e={};ge.forEach((e,t)=>e.domains.forEach(e=>_e[e]=t));const ve=e=>_e[e]??ge.length-1,xe=e=>(e.manufacturer??"").toLowerCase().includes("amazon");let be=class extends se{constructor(){super(...arguments),this.narrow=!1,this._plan=null,this._planBusy=!1,this._accepted=new Set,this._reviewOpen=!1,this._opStatus={},this._applying=!1,this._userMove={},this._userPref={},this._userRemove={},this._expandedGroups=new Set}connectedCallback(){super.connectedCallback(),this._loadPlan()}render(){return G`
+function e(e,t,i,o){var s,r=arguments.length,n=r<3?t:null===o?o=Object.getOwnPropertyDescriptor(t,i):o;if("object"==typeof Reflect&&"function"==typeof Reflect.decorate)n=Reflect.decorate(e,t,i,o);else for(var a=e.length-1;a>=0;a--)(s=e[a])&&(n=(r<3?s(n):r>3?s(t,i,n):s(t,i))||n);return r>3&&n&&Object.defineProperty(t,i,n),n}"function"==typeof SuppressedError&&SuppressedError;const t=globalThis,i=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,o=Symbol(),s=new WeakMap;let r=class{constructor(e,t,i){if(this._$cssResult$=!0,i!==o)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=e,this.t=t}get styleSheet(){let e=this.o;const t=this.t;if(i&&void 0===e){const i=void 0!==t&&1===t.length;i&&(e=s.get(t)),void 0===e&&((this.o=e=new CSSStyleSheet).replaceSync(this.cssText),i&&s.set(t,e))}return e}toString(){return this.cssText}};const n=i?e=>e:e=>e instanceof CSSStyleSheet?(e=>{let t="";for(const i of e.cssRules)t+=i.cssText;return(e=>new r("string"==typeof e?e:e+"",void 0,o))(t)})(e):e,{is:a,defineProperty:d,getOwnPropertyDescriptor:l,getOwnPropertyNames:p,getOwnPropertySymbols:c,getPrototypeOf:h}=Object,m=globalThis,u=m.trustedTypes,f=u?u.emptyScript:"",_=m.reactiveElementPolyfillSupport,g=(e,t)=>e,v={toAttribute(e,t){switch(t){case Boolean:e=e?f:null;break;case Object:case Array:e=null==e?e:JSON.stringify(e)}return e},fromAttribute(e,t){let i=e;switch(t){case Boolean:i=null!==e;break;case Number:i=null===e?null:Number(e);break;case Object:case Array:try{i=JSON.parse(e)}catch(e){i=null}}return i}},x=(e,t)=>!a(e,t),y={attribute:!0,type:String,converter:v,reflect:!1,useDefault:!1,hasChanged:x};Symbol.metadata??=Symbol("metadata"),m.litPropertyMetadata??=new WeakMap;let $=class extends HTMLElement{static addInitializer(e){this._$Ei(),(this.l??=[]).push(e)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(e,t=y){if(t.state&&(t.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(e)&&((t=Object.create(t)).wrapped=!0),this.elementProperties.set(e,t),!t.noAccessor){const i=Symbol(),o=this.getPropertyDescriptor(e,i,t);void 0!==o&&d(this.prototype,e,o)}}static getPropertyDescriptor(e,t,i){const{get:o,set:s}=l(this.prototype,e)??{get(){return this[t]},set(e){this[t]=e}};return{get:o,set(t){const r=o?.call(this);s?.call(this,t),this.requestUpdate(e,r,i)},configurable:!0,enumerable:!0}}static getPropertyOptions(e){return this.elementProperties.get(e)??y}static _$Ei(){if(this.hasOwnProperty(g("elementProperties")))return;const e=h(this);e.finalize(),void 0!==e.l&&(this.l=[...e.l]),this.elementProperties=new Map(e.elementProperties)}static finalize(){if(this.hasOwnProperty(g("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(g("properties"))){const e=this.properties,t=[...p(e),...c(e)];for(const i of t)this.createProperty(i,e[i])}const e=this[Symbol.metadata];if(null!==e){const t=litPropertyMetadata.get(e);if(void 0!==t)for(const[e,i]of t)this.elementProperties.set(e,i)}this._$Eh=new Map;for(const[e,t]of this.elementProperties){const i=this._$Eu(e,t);void 0!==i&&this._$Eh.set(i,e)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(e){const t=[];if(Array.isArray(e)){const i=new Set(e.flat(1/0).reverse());for(const e of i)t.unshift(n(e))}else void 0!==e&&t.push(n(e));return t}static _$Eu(e,t){const i=t.attribute;return!1===i?void 0:"string"==typeof i?i:"string"==typeof e?e.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(e=>this.enableUpdating=e),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(e=>e(this))}addController(e){(this._$EO??=new Set).add(e),void 0!==this.renderRoot&&this.isConnected&&e.hostConnected?.()}removeController(e){this._$EO?.delete(e)}_$E_(){const e=new Map,t=this.constructor.elementProperties;for(const i of t.keys())this.hasOwnProperty(i)&&(e.set(i,this[i]),delete this[i]);e.size>0&&(this._$Ep=e)}createRenderRoot(){const e=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((e,o)=>{if(i)e.adoptedStyleSheets=o.map(e=>e instanceof CSSStyleSheet?e:e.styleSheet);else for(const i of o){const o=document.createElement("style"),s=t.litNonce;void 0!==s&&o.setAttribute("nonce",s),o.textContent=i.cssText,e.appendChild(o)}})(e,this.constructor.elementStyles),e}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(e=>e.hostConnected?.())}enableUpdating(e){}disconnectedCallback(){this._$EO?.forEach(e=>e.hostDisconnected?.())}attributeChangedCallback(e,t,i){this._$AK(e,i)}_$ET(e,t){const i=this.constructor.elementProperties.get(e),o=this.constructor._$Eu(e,i);if(void 0!==o&&!0===i.reflect){const s=(void 0!==i.converter?.toAttribute?i.converter:v).toAttribute(t,i.type);this._$Em=e,null==s?this.removeAttribute(o):this.setAttribute(o,s),this._$Em=null}}_$AK(e,t){const i=this.constructor,o=i._$Eh.get(e);if(void 0!==o&&this._$Em!==o){const e=i.getPropertyOptions(o),s="function"==typeof e.converter?{fromAttribute:e.converter}:void 0!==e.converter?.fromAttribute?e.converter:v;this._$Em=o;const r=s.fromAttribute(t,e.type);this[o]=r??this._$Ej?.get(o)??r,this._$Em=null}}requestUpdate(e,t,i,o=!1,s){if(void 0!==e){const r=this.constructor;if(!1===o&&(s=this[e]),i??=r.getPropertyOptions(e),!((i.hasChanged??x)(s,t)||i.useDefault&&i.reflect&&s===this._$Ej?.get(e)&&!this.hasAttribute(r._$Eu(e,i))))return;this.C(e,t,i)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(e,t,{useDefault:i,reflect:o,wrapped:s},r){i&&!(this._$Ej??=new Map).has(e)&&(this._$Ej.set(e,r??t??this[e]),!0!==s||void 0!==r)||(this._$AL.has(e)||(this.hasUpdated||i||(t=void 0),this._$AL.set(e,t)),!0===o&&this._$Em!==e&&(this._$Eq??=new Set).add(e))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(e){Promise.reject(e)}const e=this.scheduleUpdate();return null!=e&&await e,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[e,t]of this._$Ep)this[e]=t;this._$Ep=void 0}const e=this.constructor.elementProperties;if(e.size>0)for(const[t,i]of e){const{wrapped:e}=i,o=this[t];!0!==e||this._$AL.has(t)||void 0===o||this.C(t,void 0,i,o)}}let e=!1;const t=this._$AL;try{e=this.shouldUpdate(t),e?(this.willUpdate(t),this._$EO?.forEach(e=>e.hostUpdate?.()),this.update(t)):this._$EM()}catch(t){throw e=!1,this._$EM(),t}e&&this._$AE(t)}willUpdate(e){}_$AE(e){this._$EO?.forEach(e=>e.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(e)),this.updated(e)}_$EM(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(e){return!0}update(e){this._$Eq&&=this._$Eq.forEach(e=>this._$ET(e,this[e])),this._$EM()}updated(e){}firstUpdated(e){}};$.elementStyles=[],$.shadowRootOptions={mode:"open"},$[g("elementProperties")]=new Map,$[g("finalized")]=new Map,_?.({ReactiveElement:$}),(m.reactiveElementVersions??=[]).push("2.1.2");const b=globalThis,w=e=>e,A=b.trustedTypes,k=A?A.createPolicy("lit-html",{createHTML:e=>e}):void 0,C="$lit$",M=`lit$${Math.random().toFixed(9).slice(2)}$`,H="?"+M,S=`<${H}>`,E=document,V=()=>E.createComment(""),L=e=>null===e||"object"!=typeof e&&"function"!=typeof e,P=Array.isArray,R="[ \t\n\f\r]",O=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,T=/-->/g,N=/>/g,z=RegExp(`>|${R}(?:([^\\s"'>=/]+)(${R}*=${R}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),U=/'/g,j=/"/g,I=/^(?:script|style|textarea|title)$/i,D=(e=>(t,...i)=>({_$litType$:e,strings:t,values:i}))(1),B=Symbol.for("lit-noChange"),Z=Symbol.for("lit-nothing"),G=new WeakMap,W=E.createTreeWalker(E,129);function q(e,t){if(!P(e)||!e.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==k?k.createHTML(t):t}const K=(e,t)=>{const i=e.length-1,o=[];let s,r=2===t?"<svg>":3===t?"<math>":"",n=O;for(let t=0;t<i;t++){const i=e[t];let a,d,l=-1,p=0;for(;p<i.length&&(n.lastIndex=p,d=n.exec(i),null!==d);)p=n.lastIndex,n===O?"!--"===d[1]?n=T:void 0!==d[1]?n=N:void 0!==d[2]?(I.test(d[2])&&(s=RegExp("</"+d[2],"g")),n=z):void 0!==d[3]&&(n=z):n===z?">"===d[0]?(n=s??O,l=-1):void 0===d[1]?l=-2:(l=n.lastIndex-d[2].length,a=d[1],n=void 0===d[3]?z:'"'===d[3]?j:U):n===j||n===U?n=z:n===T||n===N?n=O:(n=z,s=void 0);const c=n===z&&e[t+1].startsWith("/>")?" ":"";r+=n===O?i+S:l>=0?(o.push(a),i.slice(0,l)+C+i.slice(l)+M+c):i+M+(-2===l?t:c)}return[q(e,r+(e[i]||"<?>")+(2===t?"</svg>":3===t?"</math>":"")),o]};class Y{constructor({strings:e,_$litType$:t},i){let o;this.parts=[];let s=0,r=0;const n=e.length-1,a=this.parts,[d,l]=K(e,t);if(this.el=Y.createElement(d,i),W.currentNode=this.el.content,2===t||3===t){const e=this.el.content.firstChild;e.replaceWith(...e.childNodes)}for(;null!==(o=W.nextNode())&&a.length<n;){if(1===o.nodeType){if(o.hasAttributes())for(const e of o.getAttributeNames())if(e.endsWith(C)){const t=l[r++],i=o.getAttribute(e).split(M),n=/([.?@])?(.*)/.exec(t);a.push({type:1,index:s,name:n[2],strings:i,ctor:"."===n[1]?ee:"?"===n[1]?te:"@"===n[1]?ie:Q}),o.removeAttribute(e)}else e.startsWith(M)&&(a.push({type:6,index:s}),o.removeAttribute(e));if(I.test(o.tagName)){const e=o.textContent.split(M),t=e.length-1;if(t>0){o.textContent=A?A.emptyScript:"";for(let i=0;i<t;i++)o.append(e[i],V()),W.nextNode(),a.push({type:2,index:++s});o.append(e[t],V())}}}else if(8===o.nodeType)if(o.data===H)a.push({type:2,index:s});else{let e=-1;for(;-1!==(e=o.data.indexOf(M,e+1));)a.push({type:7,index:s}),e+=M.length-1}s++}}static createElement(e,t){const i=E.createElement("template");return i.innerHTML=e,i}}function F(e,t,i=e,o){if(t===B)return t;let s=void 0!==o?i._$Co?.[o]:i._$Cl;const r=L(t)?void 0:t._$litDirective$;return s?.constructor!==r&&(s?._$AO?.(!1),void 0===r?s=void 0:(s=new r(e),s._$AT(e,i,o)),void 0!==o?(i._$Co??=[])[o]=s:i._$Cl=s),void 0!==s&&(t=F(e,s._$AS(e,t.values),s,o)),t}class J{constructor(e,t){this._$AV=[],this._$AN=void 0,this._$AD=e,this._$AM=t}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(e){const{el:{content:t},parts:i}=this._$AD,o=(e?.creationScope??E).importNode(t,!0);W.currentNode=o;let s=W.nextNode(),r=0,n=0,a=i[0];for(;void 0!==a;){if(r===a.index){let t;2===a.type?t=new X(s,s.nextSibling,this,e):1===a.type?t=new a.ctor(s,a.name,a.strings,this,e):6===a.type&&(t=new oe(s,this,e)),this._$AV.push(t),a=i[++n]}r!==a?.index&&(s=W.nextNode(),r++)}return W.currentNode=E,o}p(e){let t=0;for(const i of this._$AV)void 0!==i&&(void 0!==i.strings?(i._$AI(e,i,t),t+=i.strings.length-2):i._$AI(e[t])),t++}}class X{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(e,t,i,o){this.type=2,this._$AH=Z,this._$AN=void 0,this._$AA=e,this._$AB=t,this._$AM=i,this.options=o,this._$Cv=o?.isConnected??!0}get parentNode(){let e=this._$AA.parentNode;const t=this._$AM;return void 0!==t&&11===e?.nodeType&&(e=t.parentNode),e}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(e,t=this){e=F(this,e,t),L(e)?e===Z||null==e||""===e?(this._$AH!==Z&&this._$AR(),this._$AH=Z):e!==this._$AH&&e!==B&&this._(e):void 0!==e._$litType$?this.$(e):void 0!==e.nodeType?this.T(e):(e=>P(e)||"function"==typeof e?.[Symbol.iterator])(e)?this.k(e):this._(e)}O(e){return this._$AA.parentNode.insertBefore(e,this._$AB)}T(e){this._$AH!==e&&(this._$AR(),this._$AH=this.O(e))}_(e){this._$AH!==Z&&L(this._$AH)?this._$AA.nextSibling.data=e:this.T(E.createTextNode(e)),this._$AH=e}$(e){const{values:t,_$litType$:i}=e,o="number"==typeof i?this._$AC(e):(void 0===i.el&&(i.el=Y.createElement(q(i.h,i.h[0]),this.options)),i);if(this._$AH?._$AD===o)this._$AH.p(t);else{const e=new J(o,this),i=e.u(this.options);e.p(t),this.T(i),this._$AH=e}}_$AC(e){let t=G.get(e.strings);return void 0===t&&G.set(e.strings,t=new Y(e)),t}k(e){P(this._$AH)||(this._$AH=[],this._$AR());const t=this._$AH;let i,o=0;for(const s of e)o===t.length?t.push(i=new X(this.O(V()),this.O(V()),this,this.options)):i=t[o],i._$AI(s),o++;o<t.length&&(this._$AR(i&&i._$AB.nextSibling,o),t.length=o)}_$AR(e=this._$AA.nextSibling,t){for(this._$AP?.(!1,!0,t);e!==this._$AB;){const t=w(e).nextSibling;w(e).remove(),e=t}}setConnected(e){void 0===this._$AM&&(this._$Cv=e,this._$AP?.(e))}}class Q{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(e,t,i,o,s){this.type=1,this._$AH=Z,this._$AN=void 0,this.element=e,this.name=t,this._$AM=o,this.options=s,i.length>2||""!==i[0]||""!==i[1]?(this._$AH=Array(i.length-1).fill(new String),this.strings=i):this._$AH=Z}_$AI(e,t=this,i,o){const s=this.strings;let r=!1;if(void 0===s)e=F(this,e,t,0),r=!L(e)||e!==this._$AH&&e!==B,r&&(this._$AH=e);else{const o=e;let n,a;for(e=s[0],n=0;n<s.length-1;n++)a=F(this,o[i+n],t,n),a===B&&(a=this._$AH[n]),r||=!L(a)||a!==this._$AH[n],a===Z?e=Z:e!==Z&&(e+=(a??"")+s[n+1]),this._$AH[n]=a}r&&!o&&this.j(e)}j(e){e===Z?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,e??"")}}class ee extends Q{constructor(){super(...arguments),this.type=3}j(e){this.element[this.name]=e===Z?void 0:e}}class te extends Q{constructor(){super(...arguments),this.type=4}j(e){this.element.toggleAttribute(this.name,!!e&&e!==Z)}}class ie extends Q{constructor(e,t,i,o,s){super(e,t,i,o,s),this.type=5}_$AI(e,t=this){if((e=F(this,e,t,0)??Z)===B)return;const i=this._$AH,o=e===Z&&i!==Z||e.capture!==i.capture||e.once!==i.once||e.passive!==i.passive,s=e!==Z&&(i===Z||o);o&&this.element.removeEventListener(this.name,this,i),s&&this.element.addEventListener(this.name,this,e),this._$AH=e}handleEvent(e){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,e):this._$AH.handleEvent(e)}}class oe{constructor(e,t,i){this.element=e,this.type=6,this._$AN=void 0,this._$AM=t,this.options=i}get _$AU(){return this._$AM._$AU}_$AI(e){F(this,e)}}const se=b.litHtmlPolyfillSupport;se?.(Y,X),(b.litHtmlVersions??=[]).push("3.3.3");const re=globalThis;class ne extends ${constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const e=super.createRenderRoot();return this.renderOptions.renderBefore??=e.firstChild,e}update(e){const t=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(e),this._$Do=((e,t,i)=>{const o=i?.renderBefore??t;let s=o._$litPart$;if(void 0===s){const e=i?.renderBefore??null;o._$litPart$=s=new X(t.insertBefore(V(),e),e,void 0,i??{})}return s._$AI(e),s})(t,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return B}}ne._$litElement$=!0,ne.finalized=!0,re.litElementHydrateSupport?.({LitElement:ne});const ae=re.litElementPolyfillSupport;ae?.({LitElement:ne}),(re.litElementVersions??=[]).push("4.2.2");const de={attribute:!0,type:String,converter:v,reflect:!1,hasChanged:x},le=(e=de,t,i)=>{const{kind:o,metadata:s}=i;let r=globalThis.litPropertyMetadata.get(s);if(void 0===r&&globalThis.litPropertyMetadata.set(s,r=new Map),"setter"===o&&((e=Object.create(e)).wrapped=!0),r.set(i.name,e),"accessor"===o){const{name:o}=i;return{set(i){const s=t.get.call(this);t.set.call(this,i),this.requestUpdate(o,s,e,!0,i)},init(t){return void 0!==t&&this.C(o,void 0,e,t),t}}}if("setter"===o){const{name:o}=i;return function(i){const s=this[o];t.call(this,i),this.requestUpdate(o,s,e,!0,i)}}throw Error("Unsupported decorator location: "+o)};function pe(e){return(t,i)=>"object"==typeof i?le(e,t,i):((e,t,i)=>{const o=t.hasOwnProperty(i);return t.constructor.createProperty(i,e),o?Object.getOwnPropertyDescriptor(t,i):void 0})(e,t,i)}function ce(e){return pe({...e,state:!0,attribute:!1})}function he(e,t,i,o){const s=e=>e.trim().toLowerCase(),r=e.trim();if(!i.trim())return null;let n=r;const a=[...t].filter(e=>e.trim()).sort((e,t)=>t.length-e.length).find(e=>{const t=s(r),i=s(e);return t===i||t.startsWith(i+" ")});a&&(n=r.slice(a.trim().length).trim());const d=n?`${i.trim()} ${n}`:i.trim();if(s(d)===s(r))return null;const l=new Set([...o].map(s));if(l.delete(s(r)),!l.has(s(d)))return d;for(let e=2;;e++){const t=`${d} ${e}`;if(!l.has(s(t)))return t}}const me=["expose","create_room","rename_room","place","rename","preferred","remove","delete_room"];function ue(e){const t=e.action;switch(t.kind){case"expose":return"expose";case"room_op":return"create"===t.op?"create_room":"rename"===t.op?"rename_room":"delete_room";case"move":return"place";case"rename_device":return"rename";case"preferred":return"preferred";case"remove_device":case"remove_endpoint":return"remove"}}const fe={bulb:"M12,2A7,7 0 0,1 19,9C19,11.38 17.81,13.47 16,14.74V17A1,1 0 0,1 15,18H9A1,1 0 0,1 8,17V14.74C6.19,13.47 5,11.38 5,9A7,7 0 0,1 12,2M9,21V20H15V21A1,1 0 0,1 14,22H10A1,1 0 0,1 9,21M12,4A5,5 0 0,0 7,9C7,11.05 8.23,12.81 10,13.58V16H14V13.58C15.77,12.81 17,11.05 17,9A5,5 0 0,0 12,4Z",toggle:"M17 6H7C3.69 6 1 8.69 1 12S3.69 18 7 18H17C20.31 18 23 15.31 23 12S20.31 6 17 6M17 16H7C4.79 16 3 14.21 3 12S4.79 8 7 8H17C19.21 8 21 9.79 21 12S19.21 16 17 16M17 9C15.34 9 14 10.34 14 12S15.34 15 17 15 20 13.66 20 12 18.66 9 17 9Z",speaker:"M12,12A3,3 0 0,0 9,15A3,3 0 0,0 12,18A3,3 0 0,0 15,15A3,3 0 0,0 12,12M12,20A5,5 0 0,1 7,15A5,5 0 0,1 12,10A5,5 0 0,1 17,15A5,5 0 0,1 12,20M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8C10.89,8 10,7.1 10,6C10,4.89 10.89,4 12,4M17,2H7C5.89,2 5,2.89 5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4C19,2.89 18.1,2 17,2Z",tv:"M21,17H3V5H21M21,3H3A2,2 0 0,0 1,5V17A2,2 0 0,0 3,19H8V21H16V19H21A2,2 0 0,0 23,17V5A2,2 0 0,0 21,3Z",thermostat:"M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z",fan:"M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12.5,2C17,2 17.11,5.57 14.75,6.75C13.76,7.24 13.32,8.29 13.13,9.22C13.61,9.42 14.03,9.73 14.35,10.13C18.05,8.13 22.03,8.92 22.03,12.5C22.03,17 18.46,17.1 17.28,14.73C16.78,13.74 15.72,13.3 14.79,13.11C14.59,13.59 14.28,14 13.88,14.34C15.87,18.03 15.08,22 11.5,22C7,22 6.91,18.42 9.27,17.24C10.25,16.75 10.69,15.71 10.89,14.79C10.4,14.59 9.97,14.27 9.65,13.87C5.96,15.85 2,15.07 2,11.5C2,7 5.56,6.89 6.74,9.26C7.24,10.25 8.29,10.68 9.22,10.87C9.41,10.39 9.73,9.97 10.14,9.65C8.15,5.96 8.94,2 12.5,2Z",scene:"M12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2C17.5,2 22,6 22,11A6,6 0 0,1 16,17H14.2C13.9,17 13.7,17.2 13.7,17.5C13.7,17.6 13.8,17.7 13.8,17.8C14.2,18.3 14.4,18.9 14.4,19.5C14.5,20.9 13.4,22 12,22M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C12.3,20 12.5,19.8 12.5,19.5C12.5,19.3 12.4,19.2 12.4,19.1C12,18.6 11.8,18.1 11.8,17.5C11.8,16.1 12.9,15 14.3,15H16A4,4 0 0,0 20,11C20,7.1 16.4,4 12,4M6.5,10C7.3,10 8,10.7 8,11.5C8,12.3 7.3,13 6.5,13C5.7,13 5,12.3 5,11.5C5,10.7 5.7,10 6.5,10M9.5,6C10.3,6 11,6.7 11,7.5C11,8.3 10.3,9 9.5,9C8.7,9 8,8.3 8,7.5C8,6.7 8.7,6 9.5,6M14.5,6C15.3,6 16,6.7 16,7.5C16,8.3 15.3,9 14.5,9C13.7,9 13,8.3 13,7.5C13,6.7 13.7,6 14.5,6M17.5,10C18.3,10 19,10.7 19,11.5C19,12.3 18.3,13 17.5,13C16.7,13 16,12.3 16,11.5C16,10.7 16.7,10 17.5,10Z",script:"M15,20A1,1 0 0,0 16,19V4H8A1,1 0 0,0 7,5V16H5V5A3,3 0 0,1 8,2H19A3,3 0 0,1 22,5V6H20V5A1,1 0 0,0 19,4A1,1 0 0,0 18,5V9L18,19A3,3 0 0,1 15,22H5A3,3 0 0,1 2,19V18H13A2,2 0 0,0 15,20M9,6H14V8H9V6M9,10H14V12H9V10M9,14H14V16H9V14Z",cover:"M20 19V3H4V19H2V21H22V19H20M16 9H18V11H16V9M14 11H6V9H14V11M18 7H16V5H18V7M14 5V7H6V5H14M6 19V13H14V14.82C13.55 15.14 13.25 15.66 13.25 16.25C13.25 17.22 14.03 18 15 18S16.75 17.22 16.75 16.25C16.75 15.66 16.45 15.13 16 14.82V13H18V19H6Z",vacuum:"M12,2C14.65,2 17.19,3.06 19.07,4.93L17.65,6.35C16.15,4.85 14.12,4 12,4C9.88,4 7.84,4.84 6.35,6.35L4.93,4.93C6.81,3.06 9.35,2 12,2M3.66,6.5L5.11,7.94C4.39,9.17 4,10.57 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,10.57 19.61,9.17 18.88,7.94L20.34,6.5C21.42,8.12 22,10.04 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12C2,10.04 2.58,8.12 3.66,6.5M12,6A6,6 0 0,1 18,12C18,13.59 17.37,15.12 16.24,16.24L14.83,14.83C14.08,15.58 13.06,16 12,16C10.94,16 9.92,15.58 9.17,14.83L7.76,16.24C6.63,15.12 6,13.59 6,12A6,6 0 0,1 12,6M12,8A1,1 0 0,0 11,9A1,1 0 0,0 12,10A1,1 0 0,0 13,9A1,1 0 0,0 12,8Z",lock:"M12,17C10.89,17 10,16.1 10,15C10,13.89 10.89,13 12,13A2,2 0 0,1 14,15A2,2 0 0,1 12,17M18,20V10H6V20H18M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V10C4,8.89 4.89,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",camera:"M6.03 12.03L8.03 15.5L5.5 18.68L2 12.62L6.03 12.03M17 18V15.29C17.88 14.9 18.5 14.03 18.5 13C18.5 12.43 18.3 11.9 17.97 11.5L19.94 10.35C20.95 9.76 21.3 8.47 20.71 7.46L19.33 5.06C18.74 4.05 17.45 3.7 16.44 4.28L8.31 9C7.36 9.53 7.03 10.75 7.58 11.71L9.08 14.31C9.63 15.26 10.86 15.59 11.81 15.04L13.69 13.96C13.94 14.55 14.41 15.03 15 15.29V18C15 19.1 15.9 20 17 20H22V18H17Z",phone:"M17,19H7V5H17M17,1H7C5.89,1 5,1.89 5,3V21A2,2 0 0,0 7,23H17A2,2 0 0,0 19,21V3C19,1.89 18.1,1 17,1Z",device:"M3 6H21V4H3C1.9 4 1 4.9 1 6V18C1 19.1 1.9 20 3 20H7V18H3V6M13 12H9V13.78C8.39 14.33 8 15.11 8 16C8 16.89 8.39 17.67 9 18.22V20H13V18.22C13.61 17.67 14 16.88 14 16S13.61 14.33 13 13.78V12M11 17.5C10.17 17.5 9.5 16.83 9.5 16S10.17 14.5 11 14.5 12.5 15.17 12.5 16 11.83 17.5 11 17.5M22 8H16C15.5 8 15 8.5 15 9V19C15 19.5 15.5 20 16 20H22C22.5 20 23 19.5 23 19V9C23 8.5 22.5 8 22 8M21 18H17V10H21V18Z",check:"M12 2C6.5 2 2 6.5 2 12S6.5 22 12 22 22 17.5 22 12 17.5 2 12 2M10 17L5 12L6.41 10.59L10 14.17L17.59 6.58L19 8L10 17Z",chevron:"M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z",note:"M12 3V13.55C11.41 13.21 10.73 13 10 13C7.79 13 6 14.79 6 17S7.79 21 10 21 14 19.21 14 17V7H18V3H12Z",trash:"M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",refresh:"M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",close:"M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",alert:"M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z",arrow:"M14 16.94V12.94H5.08L5.05 10.93H14V6.94L19 11.94Z",sync:"M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z",home:"M12 5.69L17 10.19V18H15V12H9V18H7V10.19L12 5.69M12 3L2 12H5V20H11V14H13V20H19V12H22",pencil:"M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z",plus:"M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M13,7H11V11H7V13H11V17H13V13H17V11H13V7Z",eyeoff:"M2,5.27L3.28,4L20,20.72L18.73,22L15.65,18.92C14.5,19.3 13.28,19.5 12,19.5C7,19.5 2.73,16.39 1,12C1.69,10.24 2.79,8.69 4.19,7.46L2,5.27M12,9A3,3 0 0,1 15,12C15,12.35 14.94,12.69 14.83,13L11,9.17C11.31,9.06 11.65,9 12,9M12,4.5C17,4.5 21.27,7.61 23,12C22.18,14.08 20.79,15.88 19,17.19L17.58,15.76C18.94,14.82 20.06,13.54 20.82,12C19.17,8.64 15.76,6.5 12,6.5C10.91,6.5 9.84,6.68 8.84,7L7.3,5.47C8.74,4.85 10.33,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C12.69,17.5 13.37,17.43 14,17.29L11.72,15C10.29,14.85 9.15,13.71 9,12.28L5.6,8.87C4.61,9.72 3.78,10.78 3.18,12Z",door:"M12,3C10.89,3 10,3.89 10,5H3V19H2V21H22V19H21V5C21,3.89 20.11,3 19,3H12M12,5H19V19H12V5M5,11H7V13H5V11Z"},_e=[{label:"Lighting",domains:["light","switch"]},{label:"Media",domains:["media_player"]},{label:"Climate",domains:["climate","fan"]},{label:"Scenes & routines",domains:["scene","script"]},{label:"Other",domains:["cover","vacuum","lock","camera","input_boolean"]}],ge={};_e.forEach((e,t)=>e.domains.forEach(e=>ge[e]=t));const ve=e=>ge[e]??_e.length-1,xe=e=>(e.manufacturer??"").toLowerCase().includes("amazon"),ye=(e,t="")=>D`<svg class="ic ${t}" viewBox="0 0 24 24" aria-hidden="true"><path d=${fe[e]}></path></svg>`,$e={light:"bulb",switch:"toggle",input_boolean:"toggle",media_player:"speaker",climate:"thermostat",fan:"fan",scene:"scene",script:"script",cover:"cover",vacuum:"vacuum",lock:"lock",camera:"camera"},be={LIGHT:"bulb",SWITCH:"toggle",SMARTPLUG:"toggle",TV:"tv",STREAMING_DEVICE:"tv",GAME_CONSOLE:"tv",SPEAKER:"speaker",ALEXA_VOICE_ENABLED:"speaker",THERMOSTAT:"thermostat",FAN:"fan",SCENE_TRIGGER:"scene",ACTIVITY_TRIGGER:"scene",INTERIOR_BLIND:"cover",EXTERIOR_BLIND:"cover",VACUUM_CLEANER:"vacuum",SMARTLOCK:"lock",CAMERA:"camera",PHONE:"phone",MOBILE_PHONE:"phone"},we={expose:"eyeoff",rooms:"home",place:"arrow",rename:"pencil",speakers:"note",cleanup_devices:"trash",cleanup_endpoints:"trash",rooms_delete:"trash"},Ae=D`<svg class="brand" viewBox="0 0 512 512" aria-hidden="true">
+  <rect width="512" height="512" rx="112" fill="#0d1628"/>
+  <path d="M256 92 L420 222 L420 408 L92 408 L92 222 Z" fill="#2c3368" stroke="#2c3368" stroke-width="36" stroke-linejoin="round"/>
+  <rect x="128" y="238" width="118" height="70" rx="18" fill="#4a86ff"/><rect x="266" y="238" width="118" height="70" rx="18" fill="#1fc6c4"/>
+  <rect x="128" y="328" width="118" height="70" rx="18" fill="#8f7ef7"/><rect x="266" y="328" width="118" height="70" rx="18" fill="#4a86ff"/>
+  <rect x="219" y="168" width="18" height="44" rx="9" fill="#4a86ff"/><rect x="247" y="152" width="18" height="60" rx="9" fill="#1fc6c4"/>
+  <rect x="275" y="176" width="18" height="36" rx="9" fill="#8f7ef7"/>
+</svg>`;let ke=class extends ne{constructor(){super(...arguments),this.narrow=!1,this._plan=null,this._planBusy=!1,this._accepted=new Set,this._reviewOpen=!1,this._opStatus={},this._applying=!1,this._userMove={},this._userPref={},this._userRemove={},this._expandedGroups=new Set,this._openRow=null,this._applyTotal=0,this._lastErrors=0,this._justSynced=!1}connectedCallback(){super.connectedCallback(),this._loadPlan()}render(){const e=Object.keys(this._userMove).length+Object.keys(this._userPref).length+Object.keys(this._userRemove).length;return D`
       <div class="wrap">
-        <header>
+        <header class="top">
+          ${this.narrow?D`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>`:Z}
+          ${Ae}
           <div class="titles">
             <h1>Alexa Organizer</h1>
             <p class="sub">Home Assistant is your house. This keeps Alexa matched to it.</p>
           </div>
+          <button
+            class="iconbtn"
+            title=${e?"Sync or undo your edits before checking again":"Check Alexa again"}
+            ?disabled=${this._planBusy||this._applying||e>0}
+            @click=${()=>this._loadPlan()}
+          >
+            ${ye("refresh",this._planBusy&&this._plan?"spin":"")}
+          </button>
         </header>
         ${this._planView()}
       </div>
-    `}async _loadPlan(){if(!this._planBusy){this._planBusy=!0;try{const e=await this.hass.connection.sendMessagePromise({type:"alexa_organizer/plan"});this._plan=e;const t=new Set((e.groups??[]).flatMap(e=>e.ops).filter(e=>e.suggested).map(e=>e.id));for(const o of this._renameOps(e.groups??[],t))t.add(o.id);this._accepted=t,this._opStatus={},this._userMove={},this._userPref={},this._userRemove={}}finally{this._planBusy=!1}}}_toggleOp(e){const t=new Set(this._accepted);t.has(e)?t.delete(e):t.add(e),this._accepted=t}get _acceptedCount(){const e=new Set(this._effectiveGroups().flatMap(e=>e.ops).map(e=>e.id));let t=0;for(const o of this._accepted)e.has(o)&&t++;return t}_endpointCurrentRoom(){const e=new Map,t=this._plan?.board;for(const o of t?.rooms??[])for(const t of o.devices)t.endpoint_id&&e.set(t.endpoint_id,o.id??"");for(const o of t?.unroomed??[])o.endpoint_id&&e.set(o.endpoint_id,"");return e}_twinsOf(e){const t=this._plan?.board;for(const o of[...(t?.rooms??[]).flatMap(e=>e.devices),...t?.unroomed??[]])if(o.endpoint_id===e)return o.twins??[];return[]}_deviceName(e){const t=this._plan?.board;for(const o of[...(t?.rooms??[]).flatMap(e=>e.devices),...t?.unroomed??[]])if(o.endpoint_id===e)return o.name;return e}_norm(e){return(e||"").trim().toLowerCase()}_areaHasRoom(e){return(this._plan?.board.rooms??[]).some(t=>!!t.id&&this._norm(t.name)===this._norm(e))}_effectiveGroups(){const e=this._mergedGroups(),t=this._renameOps(e,this._accepted);if(!t.length)return e;const o=[...e],r=o.findIndex(e=>"place"===e.key);return o.splice(r>=0?r+1:o.length,0,{key:"rename",title:"Rename Echos to match their room",destructive:!1,ops:t}),o}_renameOps(e,t){const o=this._plan?.board;if(!o)return[];const r=[...(o.rooms??[]).flatMap(e=>e.devices),...o.unroomed??[]],i=new Map(r.filter(e=>e.endpoint_id).map(e=>[e.endpoint_id,e])),n=(o.rooms??[]).map(e=>e.name),s=new Map((o.rooms??[]).filter(e=>e.id).map(e=>[e.id,e.name])),a=new Set(r.map(e=>e.name)),d=[];for(const o of e.flatMap(e=>e.ops)){const e=o.action;if("move"!==e.kind||!e.endpoint_id||!t.has(o.id))continue;const r=i.get(e.endpoint_id);if(!r||!xe(r)||!r.is_speaker)continue;const c=e.to&&s.get(e.to)||e.area||"",p=he(r.name,n,c,a);p&&(a.add(p),d.push({id:`rename:${e.endpoint_id}`,group:"rename",title:`Rename ${r.name} → ${p}`,detail:"",suggested:!0,destructive:!1,action:{kind:"rename_device",endpoint_id:e.endpoint_id,name:p}}))}return d}_mergedGroups(){const e=this._plan?.groups??[],t=Object.keys(this._userMove),o=Object.keys(this._userPref),r=Object.values(this._userRemove);if(0===t.length&&0===o.length&&0===r.length)return e;const i=this._endpointCurrentRoom(),n=[],s=[];for(const[e,t]of Object.entries(this._userMove)){const o=i.get(e)??"";if(t!==o)if(t.startsWith("#area#")){const r=t.slice(6);n.push({id:`move:${e}`,group:"place",title:`Put ${this._deviceName(e)} in ${r}`,detail:this._areaHasRoom(r)?"":"creates the room",suggested:!0,destructive:!1,action:{kind:"move",endpoint_id:e,from:o||null,to:"",area:r}}),this._areaHasRoom(r)||s.some(e=>e.id===`room:create:${r}`)||s.push({id:`room:create:${r}`,group:"rooms",title:`Create room ${r}`,detail:"for its devices",suggested:!0,destructive:!1,action:{kind:"room_op",op:"create",name:r}})}else n.push({id:`move:${e}`,group:"place",title:`Move ${this._deviceName(e)}`,detail:"",suggested:!0,destructive:!1,action:{kind:"move",endpoint_id:e,from:o||null,to:t}})}const a=o.map(e=>({id:`pref:${e}`,group:"speakers",title:`Set the main speaker in ${this._roomName(e)}`,detail:"",suggested:!0,destructive:!1,action:{kind:"preferred",room_id:e,endpoint_id:this._userPref[e]}})),d=new Set(o),c=new Map;for(const e of r)(c.get(e.group)??c.set(e.group,[]).get(e.group)).push(e);const p=new Set(r.map(e=>e.id)),l={cleanup_devices:"Delete devices",cleanup_endpoints:"Delete from Alexa",expose:"Exposure"},h=new Set(t),u=new Set(e.flatMap(e=>e.ops).map(e=>e.id)),m=s.filter(e=>!u.has(e.id)),f=new Set;let g=!1,_=!1;const v=(e,t)=>{const o=c.get(e.key);return o?(f.add(e.key),[...t.filter(e=>!p.has(e.id)),...o]):t},x=e.map(e=>"rooms"===e.key?{...e,ops:v(e,[...e.ops,...m])}:"speakers"===e.key?(_=!0,{...e,ops:v(e,[...e.ops.filter(e=>!(e=>"preferred"===e.action.kind&&!!e.action.room_id&&d.has(e.action.room_id))(e)),...a])}):"place"===e.key?(g=!0,{...e,ops:v(e,[...e.ops.filter(e=>!(e=>"move"===e.action.kind&&!!e.action.endpoint_id&&h.has(e.action.endpoint_id))(e)),...n])}):{...e,ops:v(e,e.ops)});!e.some(e=>"rooms"===e.key)&&m.length&&x.unshift({key:"rooms",title:"Rooms",destructive:!1,ops:m}),!g&&n.length&&x.push({key:"place",title:"Put devices in their room",destructive:!1,ops:n}),!_&&a.length&&x.push({key:"speakers",title:"Preferred speaker",destructive:!1,ops:a});for(const[e,t]of c)f.has(e)||x.push({key:e,title:l[e]??"Remove",destructive:!0,ops:t});return x}_roomName(e){return(this._plan?.board.rooms??[]).find(t=>t.id===e)?.name??e}_effectivePreferred(e){if(e.id&&e.id in this._userPref)return this._userPref[e.id];const t=(this._plan?.groups??[]).flatMap(e=>e.ops).find(t=>"preferred"===t.action.kind&&t.action.room_id===e.id&&this._accepted.has(t.id));return t?t.action.endpoint_id:e.preferred_id}_onSetPreferred(e,t){this._userPref={...this._userPref,[e]:t},this._accepted=new Set(this._accepted).add(`pref:${e}`)}_homeRooms(){return(this._plan?.board.rooms??[]).filter(e=>e.id||e.in_ha).map(e=>({value:e.id||`#area#${e.name}`,name:e.name}))}_removalOps(e){const t=(e,t)=>({id:`expose:${e}`,group:"expose",title:t,detail:"removes the Home Assistant copy",suggested:!0,destructive:!0,action:{kind:"expose",entity_id:e,to:!1}});if("ha"===e.source&&e.entity_id)return[t(e.entity_id,`Stop sending ${e.name} to Alexa`)];if(!e.endpoint_id)return[];const o=["echo"===e.source?{id:`rmdev:${e.endpoint_id}`,group:"cleanup_devices",title:`Delete ${e.name}`,detail:"removes this device from Alexa",suggested:!0,destructive:!0,action:{kind:"remove_device",endpoint_id:e.endpoint_id}}:{id:`rmep:${e.endpoint_id}`,group:"cleanup_endpoints",title:`Delete ${e.name}`,detail:"removes this from Alexa",suggested:!0,destructive:!0,action:{kind:"remove_endpoint",endpoint_id:e.endpoint_id}}];return e.twin_entity_id&&o.push(t(e.twin_entity_id,`Stop sending ${e.name}'s Home Assistant copy`)),o}_onRemove(e){const t=this._removalOps(e);if(!t.length)return;const o={...this._userRemove},r=new Set(this._accepted),i=!(t[0].id in o);for(const e of t)i?(o[e.id]=e,r.add(e.id)):(delete o[e.id],r.delete(e.id));this._userRemove=o,this._accepted=r}_onHomeMove(e,t){const o=this._endpointCurrentRoom().get(e)??"";this._userMove={...this._userMove,[e]:t};const r=new Set(this._accepted),i=`move:${e}`;if(t===o?r.delete(i):r.add(i),t.startsWith("#area#")){const e=t.slice(6);this._areaHasRoom(e)||r.add(`room:create:${e}`)}const n=`rename:${e}`;r.delete(n),t!==o&&this._renameOps(this._mergedGroups(),r).some(e=>e.id===n)&&r.add(n),this._accepted=r}_planEndpointCount(){const e=this._plan?.board.rooms??[],t=this._plan?.board.unroomed??[];return e.reduce((e,t)=>e+t.devices.filter(e=>e.endpoint_id).length,0)+t.filter(e=>e.endpoint_id).length}async _applyPlan(){if(this._applying||!this._plan)return;this._applying=!0;const e=this._plan,t=e=>(e||"").trim().toLowerCase(),o=(e,t)=>this.hass.callService("alexa_organizer",e,t),r=e=>this.hass.connection.sendMessagePromise(e),i=(e,t)=>this._opStatus={...this._opStatus,[e]:t},n=async(e,t)=>{i(e,"running");try{await t(),i(e,"done")}catch{i(e,"error")}};try{const s=this._effectiveGroups().flatMap(e=>e.ops).filter(e=>this._accepted.has(e.id)),a=s.some(e=>"expose"===e.action.kind&&!0===e.action.to),d=new Map;for(const o of e.board.rooms??[])o.id&&d.set(t(o.name),o.id);for(const{lane:e,ops:a}of function(e){const t=new Map;for(const o of e){const e=me(o),r=t.get(e);r?r.push(o):t.set(e,[o])}return ue.filter(e=>t.has(e)).map(e=>({lane:e,ops:t.get(e)}))}(s))if("expose"===e){const e=this._effectiveGroups().flatMap(e=>e.ops).filter(e=>"expose"===e.action.kind);a.forEach(e=>i(e.id,"running"));try{for(const t of e){const e=this._accepted.has(t.id)?t.action.to:!t.action.to;await r({type:"alexa_organizer/set",entity_id:t.action.entity_id,expose:e})}await r({type:"alexa_organizer/apply",force:!0}),a.forEach(e=>i(e.id,"done"))}catch{a.forEach(e=>i(e.id,"error"))}}else if("create_room"===e)await Promise.all(a.map(e=>n(e.id,async()=>{const o=await r({type:"alexa_organizer/create_room",name:e.action.name});if(!o.ok||!o.id)throw new Error(o.reason||"create failed");d.set(t(e.action.name),o.id)})));else if("rename_room"===e)await Promise.all(a.map(e=>n(e.id,()=>o("room_op",{action:"rename",id:e.action.id,name:e.action.name}))));else if("place"===e)await Promise.all(a.map(e=>n(e.id,()=>{const r=e.action;let i=r.to||"";if(!i&&r.area&&(i=d.get(t(r.area))??"",!i))throw new Error("room not created");const n=(e,t)=>{const r={endpoint_id:e};return t&&(r.from=t),i&&(r.to=i),o("move_device",r)};return(async()=>{await n(r.endpoint_id,r.from);for(const e of this._twinsOf(r.endpoint_id))(e.room_id??"")!==i&&await n(e.endpoint_id,e.room_id)})()})));else if("rename"===e)await Promise.all(a.map(e=>n(e.id,()=>o("rename_device",{endpoint_id:e.action.endpoint_id,name:e.action.name}))));else if("preferred"===e)await Promise.all(a.map(e=>n(e.id,()=>o("set_preferred_speaker",{room_id:e.action.room_id,endpoint_id:e.action.endpoint_id}))));else if("remove"===e){const e=a.filter(e=>"remove_device"===e.action.kind),t=a.filter(e=>"remove_endpoint"===e.action.kind);if(e.length){e.forEach(e=>i(e.id,"running"));try{await o("alexa_devices",{apply:!0,endpoint_ids:e.map(e=>e.action.endpoint_id)}),e.forEach(e=>i(e.id,"done"))}catch{e.forEach(e=>i(e.id,"error"))}}await Promise.all(t.map(e=>n(e.id,()=>o("forget_endpoint",{endpoint_id:e.action.endpoint_id}))))}else"delete_room"===e&&await Promise.all(a.map(e=>n(e.id,()=>o("room_op",{action:"delete",id:e.action.id}))));if(a){const e=this._planEndpointCount();for(let t=0;t<12&&(await new Promise(e=>setTimeout(e,4e3)),await this._loadPlan(),!(this._planEndpointCount()>e));t++);}else await this._loadPlan();this._reviewOpen=!1}finally{this._applying=!1}}_planView(){const e=this._plan;return e?G`
+      ${this._reviewOpen?this._reviewSheet():Z}
+    `}async _loadPlan(){if(!this._planBusy){this._planBusy=!0;try{const e=await this.hass.connection.sendMessagePromise({type:"alexa_organizer/plan"});this._plan=e;const t=new Set((e.groups??[]).flatMap(e=>e.ops).filter(e=>e.suggested).map(e=>e.id));for(const i of this._renameOps(e.groups??[],t))t.add(i.id);this._accepted=t,this._opStatus={},this._userMove={},this._userPref={},this._userRemove={}}finally{this._planBusy=!1}}}_toggleOp(e){const t=new Set(this._accepted);t.has(e)?t.delete(e):t.add(e),this._accepted=t}get _acceptedCount(){const e=new Set(this._effectiveGroups().flatMap(e=>e.ops).map(e=>e.id));let t=0;for(const i of this._accepted)e.has(i)&&t++;return t}_endpointCurrentRoom(){const e=new Map,t=this._plan?.board;for(const i of t?.rooms??[])for(const t of i.devices)t.endpoint_id&&e.set(t.endpoint_id,i.id??"");for(const i of t?.unroomed??[])i.endpoint_id&&e.set(i.endpoint_id,"");return e}_twinsOf(e){const t=this._plan?.board;for(const i of[...(t?.rooms??[]).flatMap(e=>e.devices),...t?.unroomed??[]])if(i.endpoint_id===e)return i.twins??[];return[]}_deviceName(e){const t=this._plan?.board;for(const i of[...(t?.rooms??[]).flatMap(e=>e.devices),...t?.unroomed??[]])if(i.endpoint_id===e)return i.name;return e}_norm(e){return(e||"").trim().toLowerCase()}_areaHasRoom(e){return(this._plan?.board.rooms??[]).some(t=>!!t.id&&this._norm(t.name)===this._norm(e))}_effectiveGroups(){const e=this._mergedGroups(),t=this._renameOps(e,this._accepted);if(!t.length)return e;const i=[...e],o=i.findIndex(e=>"place"===e.key);return i.splice(o>=0?o+1:i.length,0,{key:"rename",title:"Rename Echos to match their room",destructive:!1,ops:t}),i}_renameOps(e,t){const i=this._plan?.board;if(!i)return[];const o=[...(i.rooms??[]).flatMap(e=>e.devices),...i.unroomed??[]],s=new Map(o.filter(e=>e.endpoint_id).map(e=>[e.endpoint_id,e])),r=(i.rooms??[]).map(e=>e.name),n=new Map((i.rooms??[]).filter(e=>e.id).map(e=>[e.id,e.name])),a=new Set(o.map(e=>e.name)),d=[];for(const i of e.flatMap(e=>e.ops)){const e=i.action;if("move"!==e.kind||!e.endpoint_id||!t.has(i.id))continue;const o=s.get(e.endpoint_id);if(!o||!xe(o)||!o.is_speaker)continue;const l=e.to&&n.get(e.to)||e.area||"",p=he(o.name,r,l,a);p&&(a.add(p),d.push({id:`rename:${e.endpoint_id}`,group:"rename",title:`Rename ${o.name} → ${p}`,detail:"",suggested:!0,destructive:!1,action:{kind:"rename_device",endpoint_id:e.endpoint_id,name:p}}))}return d}_mergedGroups(){const e=this._plan?.groups??[],t=Object.keys(this._userMove),i=Object.keys(this._userPref),o=Object.values(this._userRemove);if(0===t.length&&0===i.length&&0===o.length)return e;const s=this._endpointCurrentRoom(),r=[],n=[];for(const[e,t]of Object.entries(this._userMove)){const i=s.get(e)??"";if(t!==i)if(t.startsWith("#area#")){const o=t.slice(6);r.push({id:`move:${e}`,group:"place",title:`Put ${this._deviceName(e)} in ${o}`,detail:this._areaHasRoom(o)?"":"creates the room",suggested:!0,destructive:!1,action:{kind:"move",endpoint_id:e,from:i||null,to:"",area:o}}),this._areaHasRoom(o)||n.some(e=>e.id===`room:create:${o}`)||n.push({id:`room:create:${o}`,group:"rooms",title:`Create room ${o}`,detail:"for its devices",suggested:!0,destructive:!1,action:{kind:"room_op",op:"create",name:o}})}else r.push({id:`move:${e}`,group:"place",title:`Move ${this._deviceName(e)}`,detail:"",suggested:!0,destructive:!1,action:{kind:"move",endpoint_id:e,from:i||null,to:t}})}const a=i.map(e=>({id:`pref:${e}`,group:"speakers",title:`Set the main speaker in ${this._roomName(e)}`,detail:"",suggested:!0,destructive:!1,action:{kind:"preferred",room_id:e,endpoint_id:this._userPref[e]}})),d=new Set(i),l=new Map;for(const e of o)(l.get(e.group)??l.set(e.group,[]).get(e.group)).push(e);const p=new Set(o.map(e=>e.id)),c={cleanup_devices:"Delete devices",cleanup_endpoints:"Delete from Alexa",expose:"Exposure"},h=new Set(t),m=new Set(e.flatMap(e=>e.ops).map(e=>e.id)),u=n.filter(e=>!m.has(e.id)),f=new Set;let _=!1,g=!1;const v=(e,t)=>{const i=l.get(e.key);return i?(f.add(e.key),[...t.filter(e=>!p.has(e.id)),...i]):t},x=e.map(e=>"rooms"===e.key?{...e,ops:v(e,[...e.ops,...u])}:"speakers"===e.key?(g=!0,{...e,ops:v(e,[...e.ops.filter(e=>!(e=>"preferred"===e.action.kind&&!!e.action.room_id&&d.has(e.action.room_id))(e)),...a])}):"place"===e.key?(_=!0,{...e,ops:v(e,[...e.ops.filter(e=>!(e=>"move"===e.action.kind&&!!e.action.endpoint_id&&h.has(e.action.endpoint_id))(e)),...r])}):{...e,ops:v(e,e.ops)});!e.some(e=>"rooms"===e.key)&&u.length&&x.unshift({key:"rooms",title:"Rooms",destructive:!1,ops:u}),!_&&r.length&&x.push({key:"place",title:"Put devices in their room",destructive:!1,ops:r}),!g&&a.length&&x.push({key:"speakers",title:"Preferred speaker",destructive:!1,ops:a});for(const[e,t]of l)f.has(e)||x.push({key:e,title:c[e]??"Remove",destructive:!0,ops:t});return x}_roomName(e){return(this._plan?.board.rooms??[]).find(t=>t.id===e)?.name??e}_effectivePreferred(e){if(e.id&&e.id in this._userPref)return this._userPref[e.id];const t=(this._plan?.groups??[]).flatMap(e=>e.ops).find(t=>"preferred"===t.action.kind&&t.action.room_id===e.id&&this._accepted.has(t.id));return t?t.action.endpoint_id:e.preferred_id}_onSetPreferred(e,t){this._userPref={...this._userPref,[e]:t},this._accepted=new Set(this._accepted).add(`pref:${e}`)}_homeRooms(){return(this._plan?.board.rooms??[]).filter(e=>e.id||e.in_ha).map(e=>({value:e.id||`#area#${e.name}`,name:e.name}))}_removalOps(e){const t=(e,t)=>({id:`expose:${e}`,group:"expose",title:t,detail:"removes the Home Assistant copy",suggested:!0,destructive:!0,action:{kind:"expose",entity_id:e,to:!1}});if("ha"===e.source&&e.entity_id)return[t(e.entity_id,`Stop sending ${e.name} to Alexa`)];if(!e.endpoint_id)return[];const i=["echo"===e.source?{id:`rmdev:${e.endpoint_id}`,group:"cleanup_devices",title:`Delete ${e.name}`,detail:"removes this device from Alexa",suggested:!0,destructive:!0,action:{kind:"remove_device",endpoint_id:e.endpoint_id}}:{id:`rmep:${e.endpoint_id}`,group:"cleanup_endpoints",title:`Delete ${e.name}`,detail:"removes this from Alexa",suggested:!0,destructive:!0,action:{kind:"remove_endpoint",endpoint_id:e.endpoint_id}}];return e.twin_entity_id&&i.push(t(e.twin_entity_id,`Stop sending ${e.name}'s Home Assistant copy`)),i}_onRemove(e){const t=this._removalOps(e);if(!t.length)return;const i={...this._userRemove},o=new Set(this._accepted),s=!(t[0].id in i);for(const e of t)s?(i[e.id]=e,o.add(e.id)):(delete i[e.id],o.delete(e.id));this._userRemove=i,this._accepted=o}_onHomeMove(e,t){const i=this._endpointCurrentRoom().get(e)??"";this._userMove={...this._userMove,[e]:t};const o=new Set(this._accepted),s=`move:${e}`;if(t===i?o.delete(s):o.add(s),t.startsWith("#area#")){const e=t.slice(6);this._areaHasRoom(e)||o.add(`room:create:${e}`)}const r=`rename:${e}`;o.delete(r),t!==i&&this._renameOps(this._mergedGroups(),o).some(e=>e.id===r)&&o.add(r),this._accepted=o}_planEndpointCount(){const e=this._plan?.board.rooms??[],t=this._plan?.board.unroomed??[];return e.reduce((e,t)=>e+t.devices.filter(e=>e.endpoint_id).length,0)+t.filter(e=>e.endpoint_id).length}async _applyPlan(){if(this._applying||!this._plan)return;this._applying=!0;const e=this._plan,t=e=>(e||"").trim().toLowerCase(),i=(e,t)=>this.hass.callService("alexa_organizer",e,t),o=e=>this.hass.connection.sendMessagePromise(e),s=(e,t)=>this._opStatus={...this._opStatus,[e]:t},r=async(e,t)=>{s(e,"running");try{await t(),s(e,"done")}catch{s(e,"error")}};try{const n=this._effectiveGroups().flatMap(e=>e.ops).filter(e=>this._accepted.has(e.id));this._applyTotal=n.length,this._lastErrors=0,this._justSynced=!1;const a=n.some(e=>"expose"===e.action.kind&&!0===e.action.to),d=new Map;for(const i of e.board.rooms??[])i.id&&d.set(t(i.name),i.id);for(const{lane:e,ops:a}of function(e){const t=new Map;for(const i of e){const e=ue(i),o=t.get(e);o?o.push(i):t.set(e,[i])}return me.filter(e=>t.has(e)).map(e=>({lane:e,ops:t.get(e)}))}(n))if("expose"===e){const e=this._effectiveGroups().flatMap(e=>e.ops).filter(e=>"expose"===e.action.kind);a.forEach(e=>s(e.id,"running"));try{for(const t of e){const e=this._accepted.has(t.id)?t.action.to:!t.action.to;await o({type:"alexa_organizer/set",entity_id:t.action.entity_id,expose:e})}await o({type:"alexa_organizer/apply",force:!0}),a.forEach(e=>s(e.id,"done"))}catch{a.forEach(e=>s(e.id,"error"))}}else if("create_room"===e)await Promise.all(a.map(e=>r(e.id,async()=>{const i=await o({type:"alexa_organizer/create_room",name:e.action.name});if(!i.ok||!i.id)throw new Error(i.reason||"create failed");d.set(t(e.action.name),i.id)})));else if("rename_room"===e)await Promise.all(a.map(e=>r(e.id,()=>i("room_op",{action:"rename",id:e.action.id,name:e.action.name}))));else if("place"===e)await Promise.all(a.map(e=>r(e.id,()=>{const o=e.action;let s=o.to||"";if(!s&&o.area&&(s=d.get(t(o.area))??"",!s))throw new Error("room not created");const r=(e,t)=>{const o={endpoint_id:e};return t&&(o.from=t),s&&(o.to=s),i("move_device",o)};return(async()=>{await r(o.endpoint_id,o.from);for(const e of this._twinsOf(o.endpoint_id))(e.room_id??"")!==s&&await r(e.endpoint_id,e.room_id)})()})));else if("rename"===e)await Promise.all(a.map(e=>r(e.id,()=>i("rename_device",{endpoint_id:e.action.endpoint_id,name:e.action.name}))));else if("preferred"===e)await Promise.all(a.map(e=>r(e.id,()=>i("set_preferred_speaker",{room_id:e.action.room_id,endpoint_id:e.action.endpoint_id}))));else if("remove"===e){const e=a.filter(e=>"remove_device"===e.action.kind),t=a.filter(e=>"remove_endpoint"===e.action.kind);if(e.length){e.forEach(e=>s(e.id,"running"));try{await i("alexa_devices",{apply:!0,endpoint_ids:e.map(e=>e.action.endpoint_id)}),e.forEach(e=>s(e.id,"done"))}catch{e.forEach(e=>s(e.id,"error"))}}await Promise.all(t.map(e=>r(e.id,()=>i("forget_endpoint",{endpoint_id:e.action.endpoint_id}))))}else"delete_room"===e&&await Promise.all(a.map(e=>r(e.id,()=>i("room_op",{action:"delete",id:e.action.id}))));if(this._lastErrors=Object.values(this._opStatus).filter(e=>"error"===e).length,a){const e=this._planEndpointCount();for(let t=0;t<12&&(await new Promise(e=>setTimeout(e,4e3)),await this._loadPlan(),!(this._planEndpointCount()>e));t++);}else await this._loadPlan();this._reviewOpen=!1,this._openRow=null,this._lastErrors||(this._justSynced=!0,setTimeout(()=>this._justSynced=!1,6e3))}finally{this._applying=!1}}_planView(){const e=this._plan;return e?D`
       ${this._hero()}
-      ${this._reviewOpen?this._reviewSheet():W}
-      ${e.available?W:G`<div class="banner warn">
-            Connect Alexa to organize rooms &amp; devices — this needs the Alexa Media Player or
-            Alexa Devices integration signed in. Showing Home Assistant exposure only for now.
+      ${e.available?Z:D`<div class="notice">
+            ${ye("alert")}
+            <span>
+              <b>Alexa isn't connected.</b> Sign in to Alexa Media Player or Alexa Devices in Home
+              Assistant to organize rooms and speakers. Until then, this only manages what Alexa sees.
+            </span>
           </div>`}
       ${this._planBoard()}
-    `:G`<p class="muted">Computing your plan…</p>`}_hero(){const e=this._plan,t=this._acceptedCount;return e.available&&0===t?G`<div class="hero ok"><span class="tick">✓</span> Alexa matches your house</div>`:G`
+    `:this._skeleton()}_skeleton(){const e=e=>D`
+      <section class="room skel-card">
+        <div class="skel skel-title"></div>
+        ${Array.from({length:e},()=>D`<div class="skel-row"><div class="skel skel-dot"></div><div class="skel skel-line"></div></div>`)}
+      </section>`;return D`
+      <div class="hero"><div class="skel skel-medal"></div><div class="herotext"><div class="skel skel-title"></div><div class="skel skel-line short"></div></div></div>
+      <div class="rooms">${e(4)}${e(2)}${e(3)}${e(5)}${e(2)}${e(3)}</div>
+    `}_hero(){const e=this._plan,t=this._acceptedCount;if(this._applying){const e=Object.values(this._opStatus).filter(e=>"done"===e||"error"===e).length,t=Math.max(this._applyTotal,1);return D`
+        <div class="hero busy">
+          <div class="medal m-accent">${ye("sync","spin")}</div>
+          <div class="herotext">
+            <div class="herotitle">Syncing with Alexa…</div>
+            <div class="herosub">${Math.min(e,t)} of ${t} done</div>
+            <div class="progress"><span style="width:${Math.min(e,t)/t*100}%"></span></div>
+          </div>
+        </div>`}if(this._lastErrors>0&&t>0)return D`
+        <div class="hero">
+          <div class="medal m-warn">${ye("alert")}</div>
+          <div class="herotext">
+            <div class="herotitle">${this._lastErrors} change${1===this._lastErrors?"":"s"} didn't go through</div>
+            <div class="herosub">They're still in the plan — give them another try.</div>
+          </div>
+          <button class="primary" @click=${()=>this._reviewOpen=!0}>Review &amp; Sync</button>
+        </div>`;if(0===t){const e=this._houseCounts();return D`
+        <div class="hero ${this._justSynced?"celebrate":""}">
+          <div class="medal m-ok">${ye("check")}</div>
+          <div class="herotext">
+            <div class="herotitle">${this._justSynced?"Done — Alexa matches your house":"Alexa matches your house"}</div>
+            <div class="herosub">${e.rooms} rooms · ${e.devices} devices</div>
+          </div>
+        </div>`}return D`
       <div class="hero">
+        <div class="medal m-accent"><span class="medalnum">${t}</span></div>
         <div class="herotext">
-          <strong>${t}</strong> change${1===t?"":"s"} to make Alexa match your house
+          <div class="herotitle">${t} change${1===t?"":"s"} to make Alexa match your house</div>
+          <div class="herosub">${this._changeSummary()}</div>
         </div>
-        <button class="apply" ?disabled=${this._applying||0===t} @click=${()=>this._reviewOpen=!0}>
-          ${this._applying?"Syncing…":"Review & Sync"}
-        </button>
-      </div>
-    `}_reviewSheet(){const e=this._acceptedCount;return G`
-      <div class="reviewsheet">
-        <div class="reviewhead">
-          <h2>Review changes</h2>
-          <button class="link" ?disabled=${this._applying} @click=${()=>this._reviewOpen=!1}>Close</button>
+        <button class="primary" ?disabled=${!e} @click=${()=>this._reviewOpen=!0}>Review &amp; Sync</button>
+      </div>`}_changeSummary(){const e={expose:["exposure change","exposure changes"],rooms:["room","rooms"],place:["move","moves"],rename:["rename","renames"],speakers:["speaker","speakers"],cleanup:["removal","removals"],rooms_delete:["room to delete","rooms to delete"]},t=new Map;for(const e of this._effectiveGroups()){const i=e.key.startsWith("cleanup_")?"cleanup":e.key,o=e.ops.filter(e=>this._accepted.has(e.id)).length;o&&t.set(i,(t.get(i)??0)+o)}return[...t].map(([t,i])=>`${i} ${(e[t]??["change","changes"])[1===i?0:1]}`).join(" · ")}_houseCounts(){const e=this._plan?.board,t=(e?.rooms??[]).filter(e=>e.id).length,i=[...(e?.rooms??[]).flatMap(e=>e.devices),...e?.unroomed??[]].filter(e=>e.endpoint_id).length;return{rooms:t,devices:i}}_reviewSheet(){const e=this._acceptedCount,t=()=>!this._applying&&(this._reviewOpen=!1);return D`
+      <div class="scrim" @click=${t}></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Review changes">
+        <div class="sheethead">
+          <div>
+            <h2>Review changes</h2>
+            <div class="herosub">Untick anything you don't want. Nothing changes until you sync.</div>
+          </div>
+          <button class="iconbtn" title="Close" ?disabled=${this._applying} @click=${t}>${ye("close")}</button>
         </div>
-        ${this._effectiveGroups().map(e=>this._reviewGroup(e))}
-        <div class="reviewfoot">
-          <button class="apply" ?disabled=${this._applying||0===e} @click=${this._applyPlan}>
+        <div class="sheetbody">${this._effectiveGroups().map(e=>this._reviewGroup(e))}</div>
+        <div class="sheetfoot">
+          <button class="primary wide" ?disabled=${this._applying||0===e} @click=${this._applyPlan}>
             ${this._applying?"Syncing…":`Sync ${e} change${1===e?"":"s"}`}
           </button>
         </div>
       </div>
-    `}_toggleGroupExpand(e){const t=new Set(this._expandedGroups);t.has(e)?t.delete(e):t.add(e),this._expandedGroups=t}_toggleGroup(e,t){const o=new Set(this._accepted);for(const r of e.ops)t?o.add(r.id):o.delete(r.id);this._accepted=o}_reviewGroup(e){const t=e.ops.length,o=e.ops.filter(e=>this._accepted.has(e.id)).length,r=this._expandedGroups.has(e.key);return G`
-      <div class="reviewgroup ${e.destructive?"danger":""}">
-        <div class="grouphead">
+    `}_toggleGroupExpand(e){const t=new Set(this._expandedGroups);t.has(e)?t.delete(e):t.add(e),this._expandedGroups=t}_toggleGroup(e,t){const i=new Set(this._accepted);for(const o of e.ops)t?i.add(o.id):i.delete(o.id);this._accepted=i}_reviewGroup(e){const t=e.ops.length,i=e.ops.filter(e=>this._accepted.has(e.id)).length,o=this._expandedGroups.has(e.key);return D`
+      <div class="rgroup ${e.destructive?"danger":""} ${o?"open":""}">
+        <div class="rghead">
           <input
             type="checkbox"
-            .checked=${o===t&&t>0}
-            .indeterminate=${o>0&&o<t}
+            aria-label="Include all: ${e.title}"
+            .checked=${i===t&&t>0}
+            .indeterminate=${i>0&&i<t}
             ?disabled=${this._applying}
             @change=${t=>this._toggleGroup(e,t.target.checked)}
           />
-          <button class="grouptitle" @click=${()=>this._toggleGroupExpand(e.key)}>
-            <span class="chev ${r?"open":""}">▸</span>
-            ${e.title}
-            <span class="gcount">${o}${o!==t?` of ${t}`:""}</span>
+          <button class="rgtitle" aria-expanded=${o} @click=${()=>this._toggleGroupExpand(e.key)}>
+            <span class="rgicon">${ye(we[e.key]??"device")}</span>
+            <span class="rgname">${e.title}</span>
+            <span class="rgcount">${i===t?t:`${i} of ${t}`}</span>
+            ${ye("chevron","chev")}
           </button>
         </div>
-        ${r?G`<div class="groupbody">
-              ${e.ops.map(e=>G`
-                  <label class="reviewop">
+        ${o?D`<div class="rgbody">
+              ${e.ops.map(e=>D`
+                  <label class="rop">
                     ${this._statusDisc(this._opStatus[e.id])}
                     <input
                       type="checkbox"
@@ -64,845 +119,817 @@ function e(e,t,o,r){var i,n=arguments.length,s=n<3?t:null===r?r=Object.getOwnPro
                       ?disabled=${this._applying}
                       @change=${()=>this._toggleOp(e.id)}
                     />
-                    <span class="optitle">${e.title}</span>
-                    ${e.detail?G`<span class="opdetail">${e.detail}</span>`:W}
+                    <span class="roptext">
+                      <span class="roptitle">${e.title}</span>
+                      ${e.detail?D`<span class="ropdetail">${e.detail}</span>`:Z}
+                    </span>
                   </label>
                 `)}
-            </div>`:W}
+            </div>`:Z}
       </div>
-    `}_planBoard(){const e=function(e,t,o){const r=e=>(e||"").trim().toLowerCase(),i={},n={},s=new Set,a=new Map,d=new Map,c=new Set;for(const e of t)for(const t of e.ops){if(!o.has(t.id))continue;const e=t.action;"move"===e.kind&&e.endpoint_id?e.to?i[e.endpoint_id]=e.to:e.area?n[e.endpoint_id]=r(e.area):i[e.endpoint_id]="":"remove_device"!==e.kind&&"remove_endpoint"!==e.kind||!e.endpoint_id?"rename_device"===e.kind&&e.endpoint_id&&e.name?a.set(e.endpoint_id,e.name):"expose"===e.kind&&e.entity_id?d.set(e.entity_id,e.to):"room_op"===e.kind&&"create"===e.op&&e.name&&c.add(r(e.name)):s.add(e.endpoint_id)}const p=function(e,t,o){const r=e=>!!e.endpoint_id&&e.endpoint_id in o,i=e=>o[e.endpoint_id],n=[...e.flatMap(e=>e.devices),...t].filter(r),s=e.map(e=>{const t=e.devices.filter(t=>!r(t)||i(t)===e.id),o=n.filter(t=>i(t)===e.id&&!e.devices.includes(t));return{...e,devices:[...t,...o]}}),a=[...t.filter(e=>!r(e)||""===i(e)),...n.filter(e=>""===i(e)&&!t.includes(e))];return{rooms:s,unroomed:a}}(e.rooms??[],e.unroomed??[],i),l=new Map(p.rooms.map(e=>[r(e.name),e])),h=e=>{for(const t of p.rooms){const o=t.devices.findIndex(t=>t.endpoint_id===e);if(o>=0)return t.devices.splice(o,1)[0]}const t=p.unroomed.findIndex(t=>t.endpoint_id===e);return t>=0?p.unroomed.splice(t,1)[0]:void 0};for(const[e,t]of Object.entries(n)){const o=h(e);if(!o)continue;const r=l.get(t);r?r.devices.push(o):p.unroomed.push(o)}const u=e=>({...e,name:e.endpoint_id&&a.get(e.endpoint_id)||e.name,_removing:!!e.endpoint_id&&s.has(e.endpoint_id),exposed:e.entity_id&&d.has(e.entity_id)?d.get(e.entity_id):e.exposed});return{rooms:p.rooms.map(e=>({...e,_creating:e._creating||c.has(r(e.name)),devices:e.devices.map(u)})),unroomed:p.unroomed.map(u)}}(this._plan.board,this._effectiveGroups(),this._accepted);return G`
-      ${e.rooms.map(e=>this._previewRoom(e))}
-      ${e.unroomed.length?this._previewRoom({id:null,name:"No room",in_alexa:!1,in_ha:!1,preferred_id:null,devices:e.unroomed}):W}
-    `}_previewRoom(e){return G`
-      <section class="room card">
-        <h2 class="rhead">${e.name} <span class="count">${e.devices.length}</span></h2>
-        <div class="kindgrid">
-          ${this._boardBuckets(e.devices).map(t=>G`
-              <div class="kindgroup group kind-${t.kind}">
-                <h3 class="gcap">${t.label}</h3>
-                <div class="rows">${t.devices.map(t=>this._previewDeviceRow(t,e))}</div>
-              </div>
-            `)}
-        </div>
+    `}_planBoard(){const e=function(e,t,i){const o=e=>(e||"").trim().toLowerCase(),s={},r={},n=new Set,a=new Map,d=new Map,l=new Set;for(const e of t)for(const t of e.ops){if(!i.has(t.id))continue;const e=t.action;"move"===e.kind&&e.endpoint_id?e.to?s[e.endpoint_id]=e.to:e.area?r[e.endpoint_id]=o(e.area):s[e.endpoint_id]="":"remove_device"!==e.kind&&"remove_endpoint"!==e.kind||!e.endpoint_id?"rename_device"===e.kind&&e.endpoint_id&&e.name?a.set(e.endpoint_id,e.name):"expose"===e.kind&&e.entity_id?d.set(e.entity_id,e.to):"room_op"===e.kind&&"create"===e.op&&e.name&&l.add(o(e.name)):n.add(e.endpoint_id)}const p=function(e,t,i){const o=e=>!!e.endpoint_id&&e.endpoint_id in i,s=e=>i[e.endpoint_id],r=[...e.flatMap(e=>e.devices),...t].filter(o),n=e.map(e=>{const t=e.devices.filter(t=>!o(t)||s(t)===e.id),i=r.filter(t=>s(t)===e.id&&!e.devices.includes(t));return{...e,devices:[...t,...i]}}),a=[...t.filter(e=>!o(e)||""===s(e)),...r.filter(e=>""===s(e)&&!t.includes(e))];return{rooms:n,unroomed:a}}(e.rooms??[],e.unroomed??[],s),c=new Map(p.rooms.map(e=>[o(e.name),e])),h=e=>{for(const t of p.rooms){const i=t.devices.findIndex(t=>t.endpoint_id===e);if(i>=0)return t.devices.splice(i,1)[0]}const t=p.unroomed.findIndex(t=>t.endpoint_id===e);return t>=0?p.unroomed.splice(t,1)[0]:void 0};for(const[e,t]of Object.entries(r)){const i=h(e);if(!i)continue;const o=c.get(t);o?o.devices.push(i):p.unroomed.push(i)}const m=e=>({...e,name:e.endpoint_id&&a.get(e.endpoint_id)||e.name,_removing:!!e.endpoint_id&&n.has(e.endpoint_id),exposed:e.entity_id&&d.has(e.entity_id)?d.get(e.entity_id):e.exposed});return{rooms:p.rooms.map(e=>({...e,_creating:e._creating||l.has(o(e.name)),devices:e.devices.map(m)})),unroomed:p.unroomed.map(m)}}(this._plan.board,this._effectiveGroups(),this._accepted);return D`
+      <div class="rooms">
+        ${e.rooms.map(e=>this._previewRoom(e))}
+        ${e.unroomed.length?this._previewRoom({id:null,name:"Not in a room",in_alexa:!1,in_ha:!1,preferred_id:null,devices:e.unroomed},!0):Z}
+      </div>
+    `}_previewRoom(e,t=!1){const i=this._boardBuckets(e.devices),o=i.reduce((e,t)=>e+t.devices.length,0),s=t?D`<span class="rtag">Alexa can't reach these by room</span>`:e._creating?D`<span class="rtag new">New room</span>`:!e.id&&e.in_ha?D`<span class="rtag">Not in Alexa yet</span>`:e.id&&!e.in_ha?D`<span class="rtag">Only in Alexa</span>`:Z;return D`
+      <section class="room ${t?"unroomed":""}">
+        <header class="roomhead">
+          <h2>${e.name}</h2>
+          <span class="rcount">${o}</span>
+          ${s}
+        </header>
+        ${0===o?D`<p class="empty">Nothing here yet.</p>`:Z}
+        ${i.map(t=>D`
+            <div class="group kind-${t.kind}">
+              <h3>${t.label}</h3>
+              ${t.devices.map(t=>this._deviceRow(t,e))}
+            </div>
+          `)}
       </section>
-    `}_previewDeviceRow(e,t){const o="ha"===e.source?`HA · ${fe[e.domain??""]??e.domain??"HA"}`:e.manufacturer?.trim()||("echo"===e.source?"Echo":"Alexa-only"),r=t.id??(t.in_ha?`#area#${t.name}`:""),i=e.is_speaker&&!!e.endpoint_id&&!!t.id&&!e._removing,n=i&&this._effectivePreferred(t)===e.endpoint_id,s="ALWAYS"===(t.id&&t.id in this._userPref?"ALWAYS":t.targeting),a=e.protected?null:this._removalOps(e)[0]??null,d=!!a&&a.id in this._userRemove;return G`
-      <div class="row ${e._removing?"removing":""}">
-        <div class="info">
-          <div class="name ${e._removing?"strike":""}">${e.name}</div>
-          <div class="meta">
-            <span class="kind">${o}</span>
-            ${"ha_proxy"===e.speaker_note?G`<span
-                  class="warnpill"
-                  title="This is a copy of the speaker bridged from Home Assistant. Alexa can’t play music to the copy, so pick the matching speaker above (the real one) as the room’s main instead."
-                  >copy · can’t play here</span
-                >`:W}
-            ${"ha"===e.source&&!1===e.exposed?G`<span class="reason">hidden</span>`:W}
-            ${e.synced?W:G`<span class="reason">will sync to Alexa</span>`}
-            ${e._removing?G`<span class="reason danger">will be removed</span>`:W}
-          </div>
-        </div>
-        ${i?n?s?G`<span class="mainbadge" title="A plain “play music” in this room plays on this speaker">♪ plays here</span>`:G`<span
-                    class="reason"
-                    title="Right now music only comes here when you say the room name, e.g. “play music in ${t.name}”. A plain “play music” plays on whichever Echo you spoke to."
-                    >only if you say “${t.name}”</span
-                  ><button
-                    class="mainbtn warn"
+    `}_toggleRow(e){this._openRow=this._openRow===e?null:e}_deviceRow(e,t){const i=e.endpoint_id??e.entity_id??e.name,o=this._openRow===i,s=t.id??(t.in_ha?`#area#${t.name}`:""),r=e.is_speaker&&!!e.endpoint_id&&!!t.id&&!e._removing,n=r&&this._effectivePreferred(t)===e.endpoint_id,a="ALWAYS"===(t.id&&t.id in this._userPref?"ALWAYS":t.targeting),d=e.protected?null:this._removalOps(e)[0]??null,l=!!d&&d.id in this._userRemove,p=!!e.endpoint_id||!!d,c=[];if(e._removing&&c.push(D`<span class="d-danger">Will be removed</span>`),e.endpoint_id){const t=this._endpointCurrentRoom().get(e.endpoint_id)??"";t===s||e._removing||c.push(D`<span class="d-change">Moving from ${t?this._roomName(t):"no room"}</span>`);const i=this._deviceName(e.endpoint_id);i!==e.name&&c.push(D`<span class="d-change">Was “${i}”</span>`)}return e.synced||c.push(D`<span class="d-change">New to Alexa</span>`),"ha"===e.source&&!1===e.exposed&&c.push(D`<span>Hidden from Alexa</span>`),"ha_proxy"===e.speaker_note&&c.push(D`<span>Home Assistant only · Alexa can't play here</span>`),"ha"!==e.source&&e.manufacturer&&c.push(D`<span>${e.manufacturer}</span>`),D`
+      <div class="row ${o?"open":""} ${e._removing?"removing":""}">
+        <button class="rowmain" ?disabled=${!p} aria-expanded=${o} @click=${()=>this._toggleRow(i)}>
+          <span class="medal sm">${ye((e=>"media_player"===e.domain&&"TV"===e.category?"tv":e.domain&&$e[e.domain]||e.category&&be[e.category]||(e.is_speaker?"speaker":"device"))(e))}</span>
+          <span class="rowtext">
+            <span class="name">${e.name}</span>
+            ${c.length?D`<span class="detail">${h=c,h.flatMap((e,t)=>t?[D`<span class="sep"> · </span>`,e]:[e])}</span>`:Z}
+          </span>
+          ${n?a?D`<span class="badge play" title="A plain “play music” in this room plays here">${ye("note")} Plays here</span>`:D`<span class="badge warn" title="Music only plays here when you say the room's name">Only if named</span>`:Z}
+          ${p?ye("chevron","chev"):Z}
+        </button>
+        ${o?D`<div class="rowedit">
+              ${e.endpoint_id&&!e._removing?D`<label class="field">
+                    <span>Room</span>
+                    <select
+                      class="roomsel"
+                      ?disabled=${this._applying}
+                      @change=${t=>this._onHomeMove(e.endpoint_id,t.target.value)}
+                    >
+                      <option value="" ?selected=${""===s}>No room</option>
+                      ${this._homeRooms().map(e=>D`<option value=${e.value} ?selected=${s===e.value}>${e.name}</option>`)}
+                    </select>
+                  </label>`:Z}
+              ${!r||n&&a?Z:D`<button
+                    class="chipbtn"
                     ?disabled=${this._applying}
-                    title="Make a plain “play music” in this room play on this speaker by default"
+                    title="Make a plain “play music” in ${t.name} play on this speaker"
                     @click=${()=>this._onSetPreferred(t.id,e.endpoint_id)}
                   >
-                    always play here
-                  </button>`:G`<button
-                class="mainbtn"
-                ?disabled=${this._applying}
-                title="Make this the room's speaker for “play music here”"
-                @click=${()=>this._onSetPreferred(t.id,e.endpoint_id)}
-              >
-                make main
-              </button>`:W}
-        ${e.endpoint_id&&!e._removing?G`<select
-              class="roomsel"
-              ?disabled=${this._applying}
-              @change=${t=>this._onHomeMove(e.endpoint_id,t.target.value)}
-            >
-              <option value="" ?selected=${""===r}>(no room)</option>
-              ${this._homeRooms().map(e=>G`<option value=${e.value} ?selected=${r===e.value}>${e.name}</option>`)}
-            </select>`:W}
-        ${a?G`<button
-              class="rmbtn ${d?"staged":""}"
-              ?disabled=${this._applying}
-              title=${d?"Keep this device":"Delete this from Alexa (staged for review)"}
-              @click=${()=>this._onRemove(e)}
-            >
-              ${d?"keep":"remove"}
-            </button>`:W}
+                    ${ye("note")} ${n?"Always play here":"Make main speaker"}
+                  </button>`}
+              ${d?D`<button
+                    class="chipbtn danger ${l?"on":""}"
+                    ?disabled=${this._applying}
+                    @click=${()=>this._onRemove(e)}
+                  >
+                    ${ye("trash")} ${l?"Keep it":"Remove"}
+                  </button>`:Z}
+              ${e.protected?D`<span class="hint">${ye("lock")} Protected — never removed</span>`:Z}
+            </div>`:Z}
       </div>
-    `}_boardBuckets(e){const t=new Map,o=e=>(e||"").trim().toLowerCase(),r=e=>"home assistant"===(e.manufacturer??"").trim().toLowerCase(),i=new Set(e.filter(e=>!r(e)&&e.endpoint_id).map(e=>o(e.name)));for(const n of e){if(r(n)&&"media_player"===n.domain&&i.has(o(n.name)))continue;let e,s,a,d;if(n.is_speaker)[e,s,a,d]=["spk_alexa","From Alexa (playable)","speakers",1];else if("ha_proxy"===n.speaker_note)[e,s,a,d]=["spk_hacopy","From Home Assistant (copies)","hacopy",1.5];else if("echo"===n.source||"alexa"===n.source)s=n.manufacturer?.trim()||("echo"===n.source?"Echo":"Alexa-only"),a=xe(n)?"echo":"alexa",d=xe(n)?90:91,e="brand:"+s;else{const t=n.domain?ve(n.domain):ge.length-1;[e,s,a,d]=["k"+t,ge[t].label,ge[t].label.toLowerCase().split(" ")[0],t]}const c=t.get(e);c?c.devices.push(n):t.set(e,{label:s,kind:a,order:d,devices:[n]})}return[...t.values()].sort((e,t)=>e.order-t.order)}_statusDisc(e){return"done"===e?G`<span class="state done">✓</span>`:"error"===e?G`<span class="state error">✗</span>`:"running"===e?G`<span class="state running"></span>`:G`<span class="state pending"></span>`}};be.styles=((e,...t)=>{const o=1===e.length?e[0]:t.reduce((t,o,r)=>t+(e=>{if(!0===e._$cssResult$)return e.cssText;if("number"==typeof e)return e;throw Error("Value passed to 'css' function must be a 'css' function result: "+e+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(o)+e[r+1],e[0]);return new n(o,e,r)})`
+    `;var h}_boardBuckets(e){const t=new Map,i=e=>(e||"").trim().toLowerCase(),o=e=>"home assistant"===(e.manufacturer??"").trim().toLowerCase(),s=new Set(e.filter(e=>!o(e)&&e.endpoint_id).map(e=>i(e.name)));for(const r of e){if(o(r)&&"media_player"===r.domain&&s.has(i(r.name)))continue;let e,n,a,d;if(r.is_speaker)[e,n,a,d]=["spk_alexa","Speakers","speakers",1];else if("ha_proxy"===r.speaker_note)[e,n,a,d]=["spk_hacopy","Home Assistant only","hacopy",1.5];else if("echo"===r.source||"alexa"===r.source)n=r.manufacturer?.trim()||("echo"===r.source?"Echo":"Alexa-only"),a=xe(r)?"echo":"alexa",d=xe(r)?90:91,e="brand:"+n;else{const t=r.domain?ve(r.domain):_e.length-1;[e,n,a,d]=["k"+t,_e[t].label,_e[t].label.toLowerCase().split(" ")[0],t]}const l=t.get(e);l?l.devices.push(r):t.set(e,{label:n,kind:a,order:d,devices:[r]})}return[...t.values()].sort((e,t)=>e.order-t.order)}_statusDisc(e){return"done"===e?D`<span class="state done">${ye("check")}</span>`:"error"===e?D`<span class="state error">${ye("alert")}</span>`:"running"===e?D`<span class="state running"></span>`:D`<span class="state pending"></span>`}};ke.styles=((e,...t)=>{const i=1===e.length?e[0]:t.reduce((t,i,o)=>t+(e=>{if(!0===e._$cssResult$)return e.cssText;if("number"==typeof e)return e;throw Error("Value passed to 'css' function must be a 'css' function result: "+e+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(i)+e[o+1],e[0]);return new r(i,e,o)})`
+    /* ── Tokens. Everything rides on Home Assistant's theme variables (so light/dark just
+       work); colour appears only in the kind icons, section labels, and status medal. ── */
     :host {
+      --ao-text: var(--primary-text-color, #1c1c1e);
+      --ao-muted: var(--secondary-text-color, #6e6e73);
+      --ao-card: var(--card-background-color, #fff);
+      --ao-page: var(--primary-background-color, #f2f2f7);
+      --ao-line: var(--divider-color, rgba(0, 0, 0, 0.1));
+      --ao-accent: var(--primary-color, #03a9f4);
+      --ao-ok: var(--success-color, #34a853);
+      --ao-warn: var(--warning-color, #f5a524);
+      --ao-danger: var(--error-color, #e5484d);
+      --ao-radius: 18px;
       display: block;
-      background: var(--primary-background-color, #f5f5f5);
       min-height: 100%;
-      color: var(--primary-text-color, #212121);
+      background: var(--ao-page);
+      color: var(--ao-text);
+      -webkit-font-smoothing: antialiased;
     }
     .wrap {
-      max-width: 900px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 16px 16px 88px;
+      padding: 12px 20px 72px;
       box-sizing: border-box;
     }
-    header {
+    button {
+      font: inherit;
+      color: inherit;
+    }
+    .ic {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+      flex: none;
+    }
+
+    /* ── Header ── */
+    .top {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px 24px;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 8px 4px 16px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 2px 14px;
+    }
+    .brand {
+      width: 38px;
+      height: 38px;
+      flex: none;
+    }
+    .titles {
+      min-width: 0;
+      flex: 1;
     }
     h1 {
       margin: 0;
-      font-size: 1.5rem;
-      font-weight: 600;
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
     .sub {
-      margin: 4px 0 0;
-      max-width: 46ch;
-      color: var(--secondary-text-color, #727272);
-      font-size: 0.85rem;
-      line-height: 1.4;
-    }
-    .actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .chip {
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 999px;
-      white-space: nowrap;
-    }
-    .chip.add {
-      background: color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent);
-      color: var(--success-color, #2e7d32);
-    }
-    .chip.live {
-      background: color-mix(in srgb, var(--warning-color, #ff9800) 20%, transparent);
-      color: var(--warning-color, #e65100);
-    }
-    .chip.ghost {
-      background: var(--divider-color, #e0e0e0);
-      color: var(--secondary-text-color, #616161);
-    }
-    .chip.ok {
-      background: color-mix(in srgb, var(--success-color, #4caf50) 14%, transparent);
-      color: var(--success-color, #2e7d32);
-    }
-    button.apply {
-      border: none;
-      border-radius: 8px;
-      padding: 8px 18px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: var(--primary-color, #03a9f4);
-      color: var(--text-primary-color, #fff);
-    }
-    button.apply:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-    .banner {
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin: 4px 0 12px;
-      font-size: 0.88rem;
-      line-height: 1.4;
-    }
-    .banner.err {
-      background: color-mix(in srgb, var(--error-color, #f44336) 14%, transparent);
-      color: var(--error-color, #c62828);
-    }
-    .banner.warn {
-      background: color-mix(in srgb, var(--warning-color, #ff9800) 16%, transparent);
-      color: var(--warning-color, #e65100);
-    }
-    .link {
-      background: none;
-      border: none;
-      color: inherit;
-      font: inherit;
-      font-weight: 700;
-      text-decoration: underline;
-      cursor: pointer;
-      padding: 0;
-    }
-    section {
-      margin-bottom: 20px;
-    }
-    /* A room is a Chorus-style card; its kind-groups are tinted nested boxes. */
-    section.room.card {
-      margin-bottom: 26px;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-radius: 12px;
-      padding: 12px 14px 14px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    h2 {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--primary-text-color, #212121);
-      margin: 4px 4px 6px;
-    }
-    .room .rhead {
-      margin: 2px 2px 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-    }
-    h3 {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 700;
-      color: var(--secondary-text-color, #727272);
-      margin: 14px 4px 6px;
-    }
-    .kindgroup:first-of-type h3 {
-      margin-top: 6px;
-    }
-    .count {
-      font-weight: 400;
-      opacity: 0.7;
-    }
-    /* Standalone card list (used by the cleanup / device sections). */
-    .rows {
-      background: var(--card-background-color, #fff);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    /* Within a room, each kind is a plain grouped-list section: an uppercase header with a
-       hairline, then its rows. No tinted rounded boxes / colored rails. Masonry packs the
-       sections into ~260px columns (CSS multi-column) so short sections fill the height. */
-    .kindgrid {
-      column-width: 260px;
-      column-gap: 22px;
-    }
-    .room .kindgroup {
-      --kind: var(--secondary-text-color, #6b7280);
-      min-width: 0;
-      margin: 0 0 18px;
-      display: flow-root; /* own block-formatting context — no margin-clip at a column top */
-      -webkit-column-break-inside: avoid;
-      break-inside: avoid; /* keep a section together within a column */
-    }
-    /* Color-coded section header: the kind's color as the LABEL + hairline only — no box,
-       no rail, no tinted fill (that reads as AI-generated). */
-    .room .kindgroup .gcap {
-      color: var(--kind);
-      margin: 0;
-      padding-bottom: 5px;
-      border-bottom: 2px solid color-mix(in srgb, var(--kind) 55%, transparent);
-    }
-    .room .kind-lighting { --kind: #d08700; }
-    .room .kind-speakers { --kind: #2f6fed; }
-    .room .kind-climate  { --kind: #0f9d9d; }
-    .room .kind-scenes   { --kind: #7c4dde; }
-    .room .kind-other    { --kind: #6b7280; }
-    .room .kind-echo     { --kind: #b06f2e; }
-    .room .kind-alexa    { --kind: #9333ea; }
-    .room .kind-hacopy   { --kind: #9aa0a6; }
-    /* HA copies of a speaker: present for clarity, but visibly secondary to the real ones. */
-    .room .kindgroup.kind-hacopy { opacity: 0.7; }
-    .room .kindgroup .rows {
-      background: transparent;
-      border-radius: 0;
-      box-shadow: none;
-      overflow: visible;
-    }
-    .room .kindgroup .row {
-      /* In a narrow masonry column, let the dropdown wrap below the name instead of
-         crushing it — the device name keeps a full line, the room picker drops under it. */
-      flex-wrap: wrap;
-      gap: 4px 10px;
-      padding: 9px 2px;
-    }
-    .room .kindgroup .row:last-child {
-      border-bottom: none;
-    }
-    .room .kindgroup .row .info {
-      flex: 1 1 60%;
-    }
-    .room .kindgroup .roomsel {
-      max-width: 100%;
-      margin-left: auto;
-    }
-    /* Per-device inline controls in the board */
-    .rowctl {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    /* Preferred-speaker control on a speaker row. "make main" to set it; a plain-words
-       badge marks the one that answers "play music here" — no mystery star. */
-    .mainbtn {
-      flex: none;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #666);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .mainbtn:hover {
-      border-color: var(--primary-color, #2f6fed);
-      color: var(--primary-color, #2f6fed);
-    }
-    /* Already the preferred speaker, but only when the room is named — nudge to make it always. */
-    .mainbtn.warn {
-      border-color: color-mix(in srgb, var(--warning-color, #e0a72e) 60%, transparent);
-      color: var(--warning-color, #b8860b);
-    }
-    .mainbadge {
-      flex: none;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: var(--primary-color, #2f6fed);
-      white-space: nowrap;
-    }
-    .rmbtn {
-      flex: none;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #888);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .rmbtn:hover {
-      border-color: var(--error-color, #d33);
-      color: var(--error-color, #d33);
-    }
-    .rmbtn.staged {
-      border-color: var(--error-color, #d33);
-      color: #fff;
-      background: var(--error-color, #d33);
-    }
-    .rm {
-      border: 1px solid var(--divider-color, #d0d0d0);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #999);
-      border-radius: 8px;
-      padding: 5px 9px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .rm.on {
-      color: #fff;
-      background: var(--error-color, #d33);
-      border-color: var(--error-color, #d33);
-    }
-    .headright {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .viewtoggle {
-      display: inline-flex;
-      border: 1px solid var(--divider-color, #d0d0d0);
-      border-radius: 9px;
-      overflow: hidden;
-    }
-    .viewtoggle button {
-      border: none;
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #777);
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .viewtoggle button.on {
-      background: var(--primary-color, #2f6fed);
-      color: #fff;
-    }
-    /* Plan view: hero status + review sheet */
-    .hero {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      flex-wrap: wrap;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-left: 4px solid var(--primary-color, #2f6fed);
-      border-radius: 12px;
-      padding: 16px 18px;
-      margin-bottom: 18px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    .hero.ok {
-      border-left-color: var(--success-color, #2e7d32);
-      color: var(--success-color, #2e7d32);
-      font-weight: 600;
-    }
-    .hero .tick {
-      font-size: 1.2rem;
-      margin-right: 6px;
-    }
-    .hero .herotext {
-      font-size: 1.05rem;
-    }
-    .hero .herotext strong {
-      font-size: 1.35rem;
-    }
-    .hero .apply {
-      flex-shrink: 0;
-    }
-    .reviewsheet {
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-radius: 12px;
-      padding: 10px 16px 16px;
-      margin-bottom: 18px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    .reviewhead {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-      padding-bottom: 8px;
-      margin-bottom: 6px;
-    }
-    .reviewhead h2 {
-      margin: 4px 0;
-    }
-    .reviewgroup {
-      padding: 4px 0;
-      border-bottom: 1px solid var(--divider-color, #f0f0f0);
-    }
-    .grouphead {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 2px;
-    }
-    .grouphead input {
-      width: 17px;
-      height: 17px;
-      flex-shrink: 0;
-    }
-    .grouptitle {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--primary-text-color, #212121);
-      text-align: left;
-    }
-    .reviewgroup.danger .grouptitle {
-      color: var(--error-color, #d33);
-    }
-    .chev {
-      display: inline-block;
-      transition: transform 0.15s ease;
-      opacity: 0.6;
-      font-size: 0.8rem;
-    }
-    .chev.open {
-      transform: rotate(90deg);
-    }
-    .gcount {
-      font-weight: 400;
-      color: var(--secondary-text-color, #888);
+      margin: 1px 0 0;
+      color: var(--ao-muted);
       font-size: 0.85rem;
     }
-    .groupbody {
-      padding: 2px 0 6px 26px;
-    }
-    .reviewop {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 4px;
-      cursor: pointer;
-    }
-    .reviewop input {
-      width: 17px;
-      height: 17px;
-      flex-shrink: 0;
-    }
-    .reviewop .optitle {
-      flex: 1;
-      min-width: 0;
-    }
-    .reviewop .opdetail {
-      color: var(--secondary-text-color, #888);
-      font-size: 0.82rem;
-    }
-    .reviewfoot {
-      display: flex;
-      justify-content: flex-end;
-      padding-top: 12px;
-    }
-    .name.strike {
-      text-decoration: line-through;
-      opacity: 0.6;
-    }
-    .reason.danger {
-      color: var(--error-color, #d33);
-    }
-    .warnpill {
-      color: var(--warning-color, #b76e00);
-      background: color-mix(in srgb, var(--warning-color, #b76e00) 12%, transparent);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #b76e00) 35%, transparent);
-      border-radius: 999px;
-      padding: 0 7px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      cursor: help;
-      white-space: nowrap;
-    }
-    .row.removing {
-      opacity: 0.7;
-    }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-    }
-    .row:last-child {
-      border-bottom: none;
-    }
-    .info {
-      flex: 1;
-      min-width: 0;
-    }
-    .name {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.95rem;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .dot {
-      width: 7px;
-      height: 7px;
+    .iconbtn {
+      width: 38px;
+      height: 38px;
+      flex: none;
+      display: inline-grid;
+      place-items: center;
+      border: none;
       border-radius: 50%;
-      background: var(--primary-color, #03a9f4);
-      flex: none;
-    }
-    .meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.78rem;
-      color: var(--secondary-text-color, #727272);
-      margin-top: 3px;
-    }
-    .kind {
-      font-size: 0.68rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: var(--divider-color, #e8e8e8);
-      color: var(--secondary-text-color, #616161);
-    }
-    .reason.label {
-      color: var(--primary-color, #0288d1);
-      font-weight: 600;
-    }
-    button.toggle {
-      flex: none;
-      width: 54px;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      border-radius: 999px;
-      padding: 5px 0;
-      font-size: 0.8rem;
-      font-weight: 700;
+      background: transparent;
+      color: var(--ao-muted);
       cursor: pointer;
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #9e9e9e);
     }
-    button.toggle.on {
-      background: var(--primary-color, #03a9f4);
-      color: var(--text-primary-color, #fff);
-      border-color: var(--primary-color, #03a9f4);
+    .iconbtn:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--ao-text) 8%, transparent);
+      color: var(--ao-text);
     }
-    button.toggle:disabled {
-      opacity: 0.6;
+    .iconbtn:disabled {
+      opacity: 0.4;
       cursor: default;
     }
-    .row.ghost {
-      opacity: 0.72;
+
+    /* ── Status hero: sticky, so Sync is always one tap away ── */
+    .hero {
+      position: sticky;
+      top: 8px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding: 16px 18px;
+      background: var(--ao-card);
+      border: 1px solid var(--ao-line);
+      border-radius: var(--ao-radius);
+      box-shadow: 0 6px 24px -12px rgba(0, 0, 0, 0.25);
     }
-    .row.ghost .name {
-      font-family: var(--code-font-family, monospace);
-      font-size: 0.82rem;
-      font-weight: 400;
+    .herotext {
+      flex: 1;
+      min-width: 0;
     }
-    .tag {
+    .herotitle {
+      font-size: 1.08rem;
+      font-weight: 650;
+      letter-spacing: -0.005em;
+    }
+    .herosub {
+      margin-top: 2px;
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+    }
+    .progress {
+      height: 6px;
+      margin-top: 10px;
+      border-radius: 99px;
+      background: var(--ao-line);
+      overflow: hidden;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--ao-accent);
+      transition: width 0.4s ease;
+    }
+    /* The medal: an icon in a soft disc of its own colour. Used by the hero (large) and
+       every device row (small, in its kind's colour). */
+    .medal {
+      --c: var(--kind, var(--ao-muted));
+      width: 46px;
+      height: 46px;
       flex: none;
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 3px 9px;
-      border-radius: 999px;
-      background: var(--divider-color, #e0e0e0);
-      color: var(--secondary-text-color, #616161);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--c);
+      background: color-mix(in srgb, var(--c) 15%, transparent);
     }
-    .muted {
-      color: var(--secondary-text-color, #727272);
-      font-size: 0.82rem;
-      line-height: 1.4;
-      margin: 0 4px 8px;
+    .medal .ic {
+      width: 26px;
+      height: 26px;
     }
-    .alexa-exp {
-      margin-top: 22px;
+    .medal.m-ok {
+      --c: var(--ao-ok);
     }
-    .exp-divider {
-      margin-top: 34px;
-      padding-top: 18px;
-      border-top: 2px solid var(--divider-color, #ddd);
+    .medal.m-accent {
+      --c: var(--ao-accent);
     }
-    .exp-heading {
+    .medal.m-warn {
+      --c: var(--ao-warn);
+    }
+    .medalnum {
       font-size: 1.15rem;
       font-weight: 700;
-      margin: 0 4px 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
-    .exp {
-      font-size: 0.58rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-      background: var(--warning-color, #ff9800);
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
-      vertical-align: 2px;
+    .medal.sm {
+      width: 34px;
+      height: 34px;
     }
-    .ghostbtn {
-      background: var(--secondary-background-color, #e0e0e0) !important;
-      color: var(--primary-text-color, #212121) !important;
+    .medal.sm .ic {
+      width: 19px;
+      height: 19px;
     }
-    .applybar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 10px 0 14px;
+    .hero.celebrate .medal {
+      animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
     }
-    .chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+    .hero.celebrate .herotitle {
+      color: var(--ao-ok);
     }
-    .applybtns {
-      display: flex;
-      gap: 8px;
-      margin-left: auto;
-      align-items: center;
-    }
-    .minus {
-      flex: none;
-      width: 14px;
-      text-align: center;
-      font-weight: 700;
-      color: var(--error-color, #c62828);
-    }
-    .tag.remove {
-      background: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
-      color: var(--error-color, #c62828);
-    }
-    button.toggle.rem {
-      width: auto;
-      padding: 5px 12px;
-      background: var(--error-color, #c62828);
-      color: #fff;
-      border-color: var(--error-color, #c62828);
-    }
-    button.toggle.keepbtn {
-      width: auto;
-      padding: 5px 12px;
-    }
-    .row.removing .name {
-      color: var(--error-color, #c62828);
-    }
-    .roomsel {
-      flex: none;
-      max-width: 190px;
-      padding: 5px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color, #212121);
-      font: inherit;
-      font-size: 0.85rem;
-    }
-    .row.moving {
-      background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
-    }
-    .row.moving .name {
-      color: var(--primary-color, #0288d1);
-    }
-    .deltabar {
-      position: fixed;
-      bottom: 16px;
-      /* Centered on the tool (host), not the viewport — set from JS. */
-      left: var(--ac-bar-left, 50%);
-      transform: translateX(-50%);
-      width: var(--ac-bar-width, min(680px, calc(100vw - 32px)));
-      z-index: 20;
-      overflow: hidden;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #ddd);
-      border-radius: 14px;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-    }
-    .deltabar .flare {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(
-        100deg,
-        transparent 35%,
-        color-mix(in srgb, var(--primary-color, #03a9f4) 22%, transparent) 50%,
-        color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent) 60%,
-        transparent 72%
-      );
-      background-size: 220% 100%;
-      animation: flare-sweep 3s linear infinite;
-    }
-    .deltabar.busy .flare {
-      animation-duration: 1.1s;
-    }
-    @keyframes flare-sweep {
-      from {
-        background-position: 220% 0;
+    @keyframes pop {
+      0% {
+        transform: scale(0.55);
       }
-      to {
-        background-position: -120% 0;
+      100% {
+        transform: scale(1);
       }
     }
-    @media (prefers-reduced-motion: reduce) {
-      .deltabar .flare {
-        animation: none;
-      }
-    }
-    .deltabar-inner {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 10px 14px;
-    }
-    .delta-count {
-      font-weight: 600;
-      font-size: 0.95rem;
-    }
-    .headernote {
-      align-self: center;
-    }
-    .deltadetails {
-      position: relative;
-      max-height: 42vh;
-      overflow-y: auto;
-      padding: 6px 14px 12px;
-      border-top: 1px solid var(--divider-color, #eee);
-    }
-    .dline {
-      font-size: 0.82rem;
-      padding: 3px 0;
-      display: flex;
-      gap: 6px;
-      align-items: baseline;
-    }
-    .plus {
-      color: var(--success-color, #2e7d32);
-      font-weight: 700;
-      width: 14px;
-      text-align: center;
-      flex: none;
-    }
-    .state {
-      flex: none;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.7rem;
-      font-weight: 700;
-      line-height: 1;
-      box-sizing: border-box;
-    }
-    .state.pending {
-      width: 8px;
-      height: 8px;
-      margin: 0 5px;
-      background: var(--divider-color, #cfcfcf);
-    }
-    .state.running {
-      border: 2px solid var(--divider-color, #ddd);
-      border-top-color: var(--primary-color, #03a9f4);
-      animation: spin 0.7s linear infinite;
-    }
-    .state.done {
-      background: var(--success-color, #2e7d32);
-      color: #fff;
-    }
-    .state.error {
-      background: var(--error-color, #c62828);
-      color: #fff;
+    .spin {
+      animation: spin 1.1s linear infinite;
     }
     @keyframes spin {
       to {
         transform: rotate(360deg);
       }
     }
-    .rows.scroll {
-      max-height: 240px;
+
+    /* ── Buttons ── */
+    .primary {
+      flex: none;
+      border: none;
+      border-radius: 99px;
+      padding: 10px 20px;
+      font-size: 0.92rem;
+      font-weight: 650;
+      background: var(--ao-accent);
+      color: var(--text-primary-color, #fff);
+      cursor: pointer;
+      box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--ao-accent) 80%, transparent);
+    }
+    .primary:hover:not(:disabled) {
+      filter: brightness(1.06);
+    }
+    .primary:disabled {
+      opacity: 0.45;
+      cursor: default;
+      box-shadow: none;
+    }
+    .primary.wide {
+      width: 100%;
+      padding: 13px 20px;
+      font-size: 1rem;
+    }
+    .chipbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--ao-line);
+      border-radius: 99px;
+      padding: 6px 13px 6px 10px;
+      background: var(--ao-card);
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .chipbtn .ic {
+      width: 17px;
+      height: 17px;
+    }
+    .chipbtn:hover:not(:disabled) {
+      border-color: var(--ao-accent);
+      color: var(--ao-accent);
+    }
+    .chipbtn.danger:hover:not(:disabled) {
+      border-color: var(--ao-danger);
+      color: var(--ao-danger);
+    }
+    .chipbtn.danger.on {
+      background: var(--ao-danger);
+      border-color: var(--ao-danger);
+      color: #fff;
+    }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--ao-accent);
+      outline-offset: 2px;
+    }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin: -4px 0 18px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--ao-warn) 13%, transparent);
+      color: var(--ao-text);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .notice .ic {
+      color: var(--ao-warn);
+    }
+
+    /* ── Rooms: cards packed into columns (masonry) ── */
+    .rooms {
+      columns: 360px;
+      column-gap: 16px;
+    }
+    .room {
+      display: flow-root;
+      break-inside: avoid;
+      margin: 0 0 16px;
+      padding: 16px 12px 8px;
+      background: var(--ao-card);
+      border: 1px solid var(--ao-line);
+      border-radius: var(--ao-radius);
+    }
+    .room.unroomed {
+      background: transparent;
+      border-style: dashed;
+    }
+    .roomhead {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      padding: 0 6px 4px;
+    }
+    .roomhead h2 {
+      margin: 0;
+      font-size: 1.12rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .rcount {
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rtag {
+      margin-left: auto;
+      color: var(--ao-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .rtag.new {
+      color: var(--ao-accent);
+    }
+    .empty {
+      margin: 6px 6px 10px;
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Kind sections: a coloured label + hairline. No tinted boxes, no rails. */
+    .group {
+      --kind: var(--ao-muted);
+    }
+    .group h3 {
+      margin: 12px 6px 2px;
+      padding-bottom: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--kind);
+      border-bottom: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
+    }
+    .kind-lighting { --kind: #d08700; }
+    .kind-speakers { --kind: #2f6fed; }
+    .kind-media    { --kind: #d0457d; }
+    .kind-climate  { --kind: #0f9d9d; }
+    .kind-scenes   { --kind: #7c4dde; }
+    .kind-other    { --kind: #6b7280; }
+    .kind-echo     { --kind: #b06f2e; }
+    .kind-alexa    { --kind: #9333ea; }
+    .kind-hacopy   { --kind: #8e949c; }
+    .group.kind-hacopy {
+      opacity: 0.7;
+    }
+
+    /* ── Device rows: calm by default; tap to edit ── */
+    .row {
+      border-radius: 14px;
+    }
+    .row.open {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rowmain {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 8px 6px;
+      border: none;
+      border-radius: 14px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rowmain:disabled {
+      cursor: default;
+    }
+    .rowmain:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rowtext {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .name {
+      font-size: 0.95rem;
+      font-weight: 550;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .detail {
+      margin-top: 1px;
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .d-change {
+      color: var(--ao-accent);
+      font-weight: 600;
+    }
+    .d-danger {
+      color: var(--ao-danger);
+      font-weight: 600;
+    }
+    .row.removing .name {
+      text-decoration: line-through;
+      color: var(--ao-muted);
+    }
+    .row.removing .medal {
+      filter: grayscale(1);
+      opacity: 0.6;
+    }
+    .chev {
+      width: 20px;
+      height: 20px;
+      color: var(--ao-muted);
+      opacity: 0.55;
+      transition: transform 0.2s ease;
+    }
+    .open > .rowmain .chev,
+    .rgroup.open .rgtitle .chev {
+      transform: rotate(180deg);
+    }
+    /* With a mouse, rows stay calm: the disclosure chevron appears on hover (and stays on the
+       open row). Touch screens keep it visible so rows still read as tappable. */
+    @media (hover: hover) {
+      .rowmain .chev {
+        opacity: 0;
+        transition: opacity 0.15s ease, transform 0.2s ease;
+      }
+      .rowmain:hover .chev,
+      .rowmain:focus-visible .chev,
+      .row.open .rowmain .chev {
+        opacity: 0.55;
+      }
+    }
+    .badge {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 9px 3px 7px;
+      border-radius: 99px;
+      font-size: 0.74rem;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .badge .ic {
+      width: 14px;
+      height: 14px;
+    }
+    .badge.play {
+      color: #2f6fed;
+      background: color-mix(in srgb, #2f6fed 13%, transparent);
+    }
+    .badge.warn {
+      padding-left: 9px;
+      color: var(--ao-warn);
+      background: color-mix(in srgb, var(--ao-warn) 15%, transparent);
+    }
+    .rowedit {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      padding: 2px 10px 12px 52px;
+    }
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.84rem;
+      color: var(--ao-muted);
+      font-weight: 600;
+    }
+    .roomsel {
+      max-width: 220px;
+      padding: 6px 10px;
+      border: 1px solid var(--ao-line);
+      border-radius: 10px;
+      background: var(--ao-card);
+      color: var(--ao-text);
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+    }
+    .hint .ic {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ── Review sheet ── */
+    .scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.42);
+      animation: fade 0.18s ease;
+    }
+    .sheet {
+      position: fixed;
+      z-index: 11;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(640px, calc(100vw - 32px));
+      max-height: min(82vh, 780px);
+      display: flex;
+      flex-direction: column;
+      background: var(--ao-card);
+      border-radius: 22px;
+      box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.45);
+      animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    .sheethead {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 20px 20px 12px 24px;
+      border-bottom: 1px solid var(--ao-line);
+    }
+    .sheethead > div {
+      flex: 1;
+    }
+    .sheethead h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .sheetbody {
       overflow-y: auto;
-      margin-top: 4px;
+      padding: 6px 12px;
     }
-    code {
-      background: var(--divider-color, #eee);
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 0.85em;
+    .sheetfoot {
+      padding: 14px 20px 20px;
+      border-top: 1px solid var(--ao-line);
     }
-    [hidden] {
-      display: none !important;
+    .rgroup {
+      border-bottom: 1px solid var(--ao-line);
     }
-  `,e([pe({attribute:!1})],be.prototype,"hass",void 0),e([pe({attribute:!1})],be.prototype,"narrow",void 0),e([le()],be.prototype,"_plan",void 0),e([le()],be.prototype,"_planBusy",void 0),e([le()],be.prototype,"_accepted",void 0),e([le()],be.prototype,"_reviewOpen",void 0),e([le()],be.prototype,"_opStatus",void 0),e([le()],be.prototype,"_applying",void 0),e([le()],be.prototype,"_userMove",void 0),e([le()],be.prototype,"_userPref",void 0),e([le()],be.prototype,"_userRemove",void 0),e([le()],be.prototype,"_expandedGroups",void 0),be=e([(e=>(t,o)=>{void 0!==o?o.addInitializer(()=>{customElements.define(e,t)}):customElements.define(e,t)})("alexa-panel")],be);export{be as AlexaPanel};
+    .rgroup:last-child {
+      border-bottom: none;
+    }
+    .rghead {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px 6px 12px;
+    }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      margin: 0;
+      accent-color: var(--ao-accent);
+    }
+    .rgtitle {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 6px;
+      border: none;
+      border-radius: 10px;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rgtitle:hover {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rgicon {
+      display: inline-grid;
+      color: var(--ao-accent);
+    }
+    .rgroup.danger .rgicon,
+    .rgroup.danger .rgname {
+      color: var(--ao-danger);
+    }
+    .rgname {
+      flex: 1;
+      font-weight: 650;
+    }
+    .rgcount {
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rgbody {
+      padding: 0 8px 10px 40px;
+    }
+    .rop {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px;
+      cursor: pointer;
+    }
+    .roptext {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .roptitle {
+      font-size: 0.9rem;
+    }
+    .ropdetail {
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+    }
+    .state {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      box-sizing: border-box;
+    }
+    .state .ic {
+      width: 18px;
+      height: 18px;
+    }
+    .state.pending::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ao-line);
+    }
+    .state.running {
+      border: 2px solid var(--ao-line);
+      border-top-color: var(--ao-accent);
+      animation: spin 0.7s linear infinite;
+    }
+    .state.done {
+      color: var(--ao-ok);
+    }
+    .state.error {
+      color: var(--ao-danger);
+    }
+    @keyframes fade {
+      from {
+        opacity: 0;
+      }
+    }
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -46%);
+      }
+    }
+
+    /* ── Loading skeleton ── */
+    .skel {
+      border-radius: 8px;
+      background: linear-gradient(90deg, var(--ao-line) 25%, color-mix(in srgb, var(--ao-line) 45%, transparent) 50%, var(--ao-line) 75%);
+      background-size: 300% 100%;
+      animation: shimmer 1.4s ease infinite;
+    }
+    .skel-medal {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+    }
+    .skel-title {
+      width: 40%;
+      height: 16px;
+      margin: 4px 6px 12px;
+    }
+    .herotext .skel-title {
+      width: 50%;
+      margin: 0 0 8px;
+    }
+    .skel-line {
+      flex: 1;
+      height: 12px;
+    }
+    .skel-line.short {
+      width: 30%;
+      flex: none;
+    }
+    .skel-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 6px;
+    }
+    .skel-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+    }
+    @keyframes shimmer {
+      from {
+        background-position: 100% 0;
+      }
+      to {
+        background-position: 0 0;
+      }
+    }
+
+    /* ── Phones ── */
+    @media (max-width: 600px) {
+      .wrap {
+        padding: 6px 10px 64px;
+      }
+      .hero {
+        flex-wrap: wrap;
+        padding: 14px;
+      }
+      .hero .primary {
+        width: 100%;
+      }
+      .sheet {
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: 100%;
+        transform: none;
+        max-height: 88vh;
+        border-radius: 22px 22px 0 0;
+        animation: slideup 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+      }
+      .rowedit {
+        padding-left: 10px;
+      }
+    }
+    @keyframes slideup {
+      from {
+        transform: translateY(100%);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  `,e([pe({attribute:!1})],ke.prototype,"hass",void 0),e([pe({attribute:!1})],ke.prototype,"narrow",void 0),e([ce()],ke.prototype,"_plan",void 0),e([ce()],ke.prototype,"_planBusy",void 0),e([ce()],ke.prototype,"_accepted",void 0),e([ce()],ke.prototype,"_reviewOpen",void 0),e([ce()],ke.prototype,"_opStatus",void 0),e([ce()],ke.prototype,"_applying",void 0),e([ce()],ke.prototype,"_userMove",void 0),e([ce()],ke.prototype,"_userPref",void 0),e([ce()],ke.prototype,"_userRemove",void 0),e([ce()],ke.prototype,"_expandedGroups",void 0),e([ce()],ke.prototype,"_openRow",void 0),e([ce()],ke.prototype,"_applyTotal",void 0),e([ce()],ke.prototype,"_lastErrors",void 0),e([ce()],ke.prototype,"_justSynced",void 0),ke=e([(e=>(t,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(e,t)}):customElements.define(e,t)})("alexa-panel")],ke);export{ke as AlexaPanel};

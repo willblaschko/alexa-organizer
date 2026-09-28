@@ -696,6 +696,7 @@ def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
             # brand for the UI badge. A Sonos linked via the Sonos-Alexa skill carries an Amazon
             # device_type (so source=="echo"), so device_type/source can't name the brand; this can.
             "manufacturer": e.get("manufacturer") or "",
+            "category": e["category"],  # Alexa display category (for the panel's device icon)
             "serial": e.get("serial"),  # device serial (Echoes) — the cross-system join key
             "ha_entity": e.get("ha_entity"),  # for an HA-bridged copy: the exact HA entity_id
         }
@@ -854,7 +855,7 @@ _PLAN_GROUP_ORDER = (
     "expose", "rooms", "place", "speakers", "cleanup_devices", "cleanup_endpoints", "rooms_delete",
 )
 _PLAN_TITLES = {
-    "expose": "Show devices to Alexa",
+    "expose": "What Alexa sees",
     "rooms": "Rooms",
     "place": "Put devices in their room",
     "speakers": "Preferred speaker",

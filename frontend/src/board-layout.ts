@@ -12,6 +12,7 @@ export interface BoardDevice {
   area?: string | null;
   is_speaker: boolean;
   manufacturer?: string; // real brand, e.g. "Sonos, Inc." / "Amazon" / "Home Assistant"
+  category?: string; // Alexa display category (LIGHT, TV, ALEXA_VOICE_ENABLED, …) — for the icon
   // The same physical device's Home Assistant copy (a separate Alexa endpoint), folded into
   // this row. Every action on the device fans out to these too.
   twins?: { endpoint_id: string; room_id: string | null }[];

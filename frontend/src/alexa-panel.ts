@@ -10,6 +10,7 @@ import {
   type PlanOp,
 } from "./board-layout.js";
 import { planLanes } from "./queue.js";
+import { ICON, type IconName } from "./icons.js";
 
 // Minimal shape of the objects HA hands a custom panel.
 interface HomeAssistant {
@@ -19,28 +20,12 @@ interface HomeAssistant {
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
 }
 
-// Short per-device kind chips shown in the board (the domain is a tag, not a heading).
-const DOMAIN_CHIP: Record<string, string> = {
-  media_player: "Speaker",
-  light: "Light",
-  switch: "Switch",
-  climate: "Climate",
-  scene: "Scene",
-  script: "Script",
-  cover: "Cover",
-  fan: "Fan",
-  vacuum: "Vacuum",
-  lock: "Lock",
-  camera: "Camera",
-  input_boolean: "Toggle",
-};
-
 // Opinionated within-room type grouping. Lighting collapses light + switch (a
 // switch or plug driving a light is, to a voice user, a light). Order here is the
 // order sections appear in each room; any domain not listed falls into "Other".
 const KIND_GROUPS: ReadonlyArray<{ label: string; domains: readonly string[] }> = [
   { label: "Lighting", domains: ["light", "switch"] },
-  { label: "Speakers", domains: ["media_player"] },
+  { label: "Media", domains: ["media_player"] }, // TVs, receivers (real speakers get their own section)
   { label: "Climate", domains: ["climate", "fan"] },
   { label: "Scenes & routines", domains: ["scene", "script"] },
   { label: "Other", domains: ["cover", "vacuum", "lock", "camera", "input_boolean"] },
@@ -52,6 +37,42 @@ const kindIndex = (domain: string) => KIND_OF[domain] ?? KIND_GROUPS.length - 1;
 // Brand of an endpoint from its real manufacturer (not device_type — a Sonos linked via the
 // Sonos-Alexa skill carries an Amazon device_type yet is made by Sonos).
 const isAmazon = (d: { manufacturer?: string }) => (d.manufacturer ?? "").toLowerCase().includes("amazon");
+
+const svgIcon = (name: IconName, cls = ""): TemplateResult =>
+  html`<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d=${ICON[name]}></path></svg>`;
+
+// A device's icon: its HA domain when it has one, else its Alexa display category.
+const DOMAIN_ICON: Record<string, IconName> = {
+  light: "bulb", switch: "toggle", input_boolean: "toggle", media_player: "speaker", climate: "thermostat",
+  fan: "fan", scene: "scene", script: "script", cover: "cover", vacuum: "vacuum", lock: "lock", camera: "camera",
+};
+const CATEGORY_ICON: Record<string, IconName> = {
+  LIGHT: "bulb", SWITCH: "toggle", SMARTPLUG: "toggle", TV: "tv", STREAMING_DEVICE: "tv", GAME_CONSOLE: "tv",
+  SPEAKER: "speaker", ALEXA_VOICE_ENABLED: "speaker", THERMOSTAT: "thermostat", FAN: "fan",
+  SCENE_TRIGGER: "scene", ACTIVITY_TRIGGER: "scene", INTERIOR_BLIND: "cover", EXTERIOR_BLIND: "cover",
+  VACUUM_CLEANER: "vacuum", SMARTLOCK: "lock", CAMERA: "camera", PHONE: "phone", MOBILE_PHONE: "phone",
+};
+const deviceIcon = (d: BoardDevice): IconName => {
+  if (d.domain === "media_player" && d.category === "TV") return "tv";
+  return (d.domain && DOMAIN_ICON[d.domain]) || (d.category && CATEGORY_ICON[d.category]) || (d.is_speaker ? "speaker" : "device");
+};
+// The review sheet's group icons.
+const GROUP_ICON: Record<string, IconName> = {
+  expose: "eyeoff", rooms: "home", place: "arrow", rename: "pencil", speakers: "note",
+  cleanup_devices: "trash", cleanup_endpoints: "trash", rooms_delete: "trash",
+};
+const joinDot = (parts: TemplateResult[]): TemplateResult[] =>
+  parts.flatMap((p, i) => (i ? [html`<span class="sep"> · </span>`, p] : [p]));
+
+// The app icon, inline (a house of room tiles with voice bars — Chorus's sibling).
+const BRAND_MARK = html`<svg class="brand" viewBox="0 0 512 512" aria-hidden="true">
+  <rect width="512" height="512" rx="112" fill="#0d1628"/>
+  <path d="M256 92 L420 222 L420 408 L92 408 L92 222 Z" fill="#2c3368" stroke="#2c3368" stroke-width="36" stroke-linejoin="round"/>
+  <rect x="128" y="238" width="118" height="70" rx="18" fill="#4a86ff"/><rect x="266" y="238" width="118" height="70" rx="18" fill="#1fc6c4"/>
+  <rect x="128" y="328" width="118" height="70" rx="18" fill="#8f7ef7"/><rect x="266" y="328" width="118" height="70" rx="18" fill="#4a86ff"/>
+  <rect x="219" y="168" width="18" height="44" rx="9" fill="#4a86ff"/><rect x="247" y="152" width="18" height="60" rx="9" fill="#1fc6c4"/>
+  <rect x="275" y="176" width="18" height="36" rx="9" fill="#8f7ef7"/>
+</svg>`;
 
 @customElement("alexa-panel")
 export class AlexaPanel extends LitElement {
@@ -68,6 +89,10 @@ export class AlexaPanel extends LitElement {
   @state() private _userPref: Record<string, string> = {}; // room id -> chosen main-speaker endpoint id
   @state() private _userRemove: Record<string, PlanOp> = {}; // op id -> a removal op the user staged inline
   @state() private _expandedGroups = new Set<string>(); // review groups shown expanded
+  @state() private _openRow: string | null = null; // the device row expanded for editing
+  @state() private _applyTotal = 0; // ops in the current sync (for the progress bar)
+  @state() private _lastErrors = 0; // ops that failed in the last sync
+  @state() private _justSynced = false; // the "Done" moment after a clean sync
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -75,16 +100,29 @@ export class AlexaPanel extends LitElement {
   }
 
   protected override render(): TemplateResult {
+    const staged =
+      Object.keys(this._userMove).length + Object.keys(this._userPref).length + Object.keys(this._userRemove).length;
     return html`
       <div class="wrap">
-        <header>
+        <header class="top">
+          ${this.narrow ? html`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>` : nothing}
+          ${BRAND_MARK}
           <div class="titles">
             <h1>Alexa Organizer</h1>
             <p class="sub">Home Assistant is your house. This keeps Alexa matched to it.</p>
           </div>
+          <button
+            class="iconbtn"
+            title=${staged ? "Sync or undo your edits before checking again" : "Check Alexa again"}
+            ?disabled=${this._planBusy || this._applying || staged > 0}
+            @click=${() => this._loadPlan()}
+          >
+            ${svgIcon("refresh", this._planBusy && this._plan ? "spin" : "")}
+          </button>
         </header>
         ${this._planView()}
       </div>
+      ${this._reviewOpen ? this._reviewSheet() : nothing}
     `;
   }
 
@@ -424,6 +462,9 @@ export class AlexaPanel extends LitElement {
       const accepted = this._effectiveGroups()
         .flatMap((g) => g.ops)
         .filter((o) => this._accepted.has(o.id));
+      this._applyTotal = accepted.length;
+      this._lastErrors = 0;
+      this._justSynced = false;
       const willExposeNew = accepted.some((o) => o.action.kind === "expose" && o.action.to === true);
 
       // Threaded across lanes: HA area (normalized) → its room id (existing + freshly made).
@@ -520,6 +561,8 @@ export class AlexaPanel extends LitElement {
         }
       }
 
+      // Remember failures before the reload clears per-op status (the hero reports them).
+      this._lastErrors = Object.values(this._opStatus).filter((st) => st === "error").length;
       // Wait for Alexa to reflect newly-exposed devices, then recompute the plan.
       if (willExposeNew) {
         const baseline = this._planEndpointCount();
@@ -532,6 +575,11 @@ export class AlexaPanel extends LitElement {
         await this._loadPlan();
       }
       this._reviewOpen = false;
+      this._openRow = null;
+      if (!this._lastErrors) {
+        this._justSynced = true; // the "Done" moment, then back to the calm state
+        setTimeout(() => (this._justSynced = false), 6000);
+      }
     } finally {
       this._applying = false;
     }
@@ -539,49 +587,125 @@ export class AlexaPanel extends LitElement {
 
   private _planView(): TemplateResult {
     const p = this._plan;
-    if (!p) return html`<p class="muted">Computing your plan…</p>`;
+    if (!p) return this._skeleton();
     return html`
       ${this._hero()}
-      ${this._reviewOpen ? this._reviewSheet() : nothing}
       ${!p.available
-        ? html`<div class="banner warn">
-            Connect Alexa to organize rooms &amp; devices — this needs the Alexa Media Player or
-            Alexa Devices integration signed in. Showing Home Assistant exposure only for now.
+        ? html`<div class="notice">
+            ${svgIcon("alert")}
+            <span>
+              <b>Alexa isn't connected.</b> Sign in to Alexa Media Player or Alexa Devices in Home
+              Assistant to organize rooms and speakers. Until then, this only manages what Alexa sees.
+            </span>
           </div>`
         : nothing}
       ${this._planBoard()}
     `;
   }
 
-  private _hero(): TemplateResult {
-    const p = this._plan!;
-    const n = this._acceptedCount;
-    if (p.available && n === 0) {
-      return html`<div class="hero ok"><span class="tick">✓</span> Alexa matches your house</div>`;
-    }
+  // Loading: the page's real shape, shimmering — no spinner, no layout jump.
+  private _skeleton(): TemplateResult {
+    const card = (rows: number) => html`
+      <section class="room skel-card">
+        <div class="skel skel-title"></div>
+        ${Array.from({ length: rows }, () => html`<div class="skel-row"><div class="skel skel-dot"></div><div class="skel skel-line"></div></div>`)}
+      </section>`;
     return html`
-      <div class="hero">
-        <div class="herotext">
-          <strong>${n}</strong> change${n === 1 ? "" : "s"} to make Alexa match your house
-        </div>
-        <button class="apply" ?disabled=${this._applying || n === 0} @click=${() => (this._reviewOpen = true)}>
-          ${this._applying ? "Syncing…" : "Review & Sync"}
-        </button>
-      </div>
+      <div class="hero"><div class="skel skel-medal"></div><div class="herotext"><div class="skel skel-title"></div><div class="skel skel-line short"></div></div></div>
+      <div class="rooms">${card(4)}${card(2)}${card(3)}${card(5)}${card(2)}${card(3)}</div>
     `;
   }
 
+  // The one status line — sticky, so it's always there to sync from.
+  private _hero(): TemplateResult {
+    const p = this._plan!;
+    const n = this._acceptedCount;
+    if (this._applying) {
+      const done = Object.values(this._opStatus).filter((s) => s === "done" || s === "error").length;
+      const total = Math.max(this._applyTotal, 1);
+      return html`
+        <div class="hero busy">
+          <div class="medal m-accent">${svgIcon("sync", "spin")}</div>
+          <div class="herotext">
+            <div class="herotitle">Syncing with Alexa…</div>
+            <div class="herosub">${Math.min(done, total)} of ${total} done</div>
+            <div class="progress"><span style="width:${(Math.min(done, total) / total) * 100}%"></span></div>
+          </div>
+        </div>`;
+    }
+    if (this._lastErrors > 0 && n > 0) {
+      return html`
+        <div class="hero">
+          <div class="medal m-warn">${svgIcon("alert")}</div>
+          <div class="herotext">
+            <div class="herotitle">${this._lastErrors} change${this._lastErrors === 1 ? "" : "s"} didn't go through</div>
+            <div class="herosub">They're still in the plan — give them another try.</div>
+          </div>
+          <button class="primary" @click=${() => (this._reviewOpen = true)}>Review &amp; Sync</button>
+        </div>`;
+    }
+    if (n === 0) {
+      const counts = this._houseCounts();
+      return html`
+        <div class="hero ${this._justSynced ? "celebrate" : ""}">
+          <div class="medal m-ok">${svgIcon("check")}</div>
+          <div class="herotext">
+            <div class="herotitle">${this._justSynced ? "Done — Alexa matches your house" : "Alexa matches your house"}</div>
+            <div class="herosub">${counts.rooms} rooms · ${counts.devices} devices</div>
+          </div>
+        </div>`;
+    }
+    return html`
+      <div class="hero">
+        <div class="medal m-accent"><span class="medalnum">${n}</span></div>
+        <div class="herotext">
+          <div class="herotitle">${n} change${n === 1 ? "" : "s"} to make Alexa match your house</div>
+          <div class="herosub">${this._changeSummary()}</div>
+        </div>
+        <button class="primary" ?disabled=${!p} @click=${() => (this._reviewOpen = true)}>Review &amp; Sync</button>
+      </div>`;
+  }
+
+  // "5 moves · 2 rooms · 3 removals" — what the pending changes add up to.
+  private _changeSummary(): string {
+    const nouns: Record<string, [string, string]> = {
+      expose: ["exposure change", "exposure changes"], rooms: ["room", "rooms"], place: ["move", "moves"],
+      rename: ["rename", "renames"], speakers: ["speaker", "speakers"], cleanup: ["removal", "removals"],
+      rooms_delete: ["room to delete", "rooms to delete"],
+    };
+    const by = new Map<string, number>();
+    for (const g of this._effectiveGroups()) {
+      const k = g.key.startsWith("cleanup_") ? "cleanup" : g.key;
+      const c = g.ops.filter((o) => this._accepted.has(o.id)).length;
+      if (c) by.set(k, (by.get(k) ?? 0) + c);
+    }
+    return [...by].map(([k, c]) => `${c} ${(nouns[k] ?? ["change", "changes"])[c === 1 ? 0 : 1]}`).join(" · ");
+  }
+
+  private _houseCounts(): { rooms: number; devices: number } {
+    const b = this._plan?.board;
+    const rooms = (b?.rooms ?? []).filter((r) => r.id).length;
+    const devices = [...(b?.rooms ?? []).flatMap((r) => r.devices), ...(b?.unroomed ?? [])].filter((d) => d.endpoint_id).length;
+    return { rooms, devices };
+  }
+
+  // Review: a sheet over the page (a bottom sheet on phones) — the plan, grouped, opt-out.
   private _reviewSheet(): TemplateResult {
     const n = this._acceptedCount;
+    const close = () => !this._applying && (this._reviewOpen = false);
     return html`
-      <div class="reviewsheet">
-        <div class="reviewhead">
-          <h2>Review changes</h2>
-          <button class="link" ?disabled=${this._applying} @click=${() => (this._reviewOpen = false)}>Close</button>
+      <div class="scrim" @click=${close}></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Review changes">
+        <div class="sheethead">
+          <div>
+            <h2>Review changes</h2>
+            <div class="herosub">Untick anything you don't want. Nothing changes until you sync.</div>
+          </div>
+          <button class="iconbtn" title="Close" ?disabled=${this._applying} @click=${close}>${svgIcon("close")}</button>
         </div>
-        ${this._effectiveGroups().map((g) => this._reviewGroup(g))}
-        <div class="reviewfoot">
-          <button class="apply" ?disabled=${this._applying || n === 0} @click=${this._applyPlan}>
+        <div class="sheetbody">${this._effectiveGroups().map((g) => this._reviewGroup(g))}</div>
+        <div class="sheetfoot">
+          <button class="primary wide" ?disabled=${this._applying || n === 0} @click=${this._applyPlan}>
             ${this._applying ? "Syncing…" : `Sync ${n} change${n === 1 ? "" : "s"}`}
           </button>
         </div>
@@ -606,26 +730,28 @@ export class AlexaPanel extends LitElement {
     const sel = g.ops.filter((o) => this._accepted.has(o.id)).length;
     const open = this._expandedGroups.has(g.key);
     return html`
-      <div class="reviewgroup ${g.destructive ? "danger" : ""}">
-        <div class="grouphead">
+      <div class="rgroup ${g.destructive ? "danger" : ""} ${open ? "open" : ""}">
+        <div class="rghead">
           <input
             type="checkbox"
+            aria-label="Include all: ${g.title}"
             .checked=${sel === total && total > 0}
             .indeterminate=${sel > 0 && sel < total}
             ?disabled=${this._applying}
             @change=${(e: Event) => this._toggleGroup(g, (e.target as HTMLInputElement).checked)}
           />
-          <button class="grouptitle" @click=${() => this._toggleGroupExpand(g.key)}>
-            <span class="chev ${open ? "open" : ""}">▸</span>
-            ${g.title}
-            <span class="gcount">${sel}${sel !== total ? ` of ${total}` : ""}</span>
+          <button class="rgtitle" aria-expanded=${open} @click=${() => this._toggleGroupExpand(g.key)}>
+            <span class="rgicon">${svgIcon(GROUP_ICON[g.key] ?? "device")}</span>
+            <span class="rgname">${g.title}</span>
+            <span class="rgcount">${sel === total ? total : `${sel} of ${total}`}</span>
+            ${svgIcon("chevron", "chev")}
           </button>
         </div>
         ${open
-          ? html`<div class="groupbody">
+          ? html`<div class="rgbody">
               ${g.ops.map(
                 (o) => html`
-                  <label class="reviewop">
+                  <label class="rop">
                     ${this._statusDisc(this._opStatus[o.id])}
                     <input
                       type="checkbox"
@@ -633,8 +759,10 @@ export class AlexaPanel extends LitElement {
                       ?disabled=${this._applying}
                       @change=${() => this._toggleOp(o.id)}
                     />
-                    <span class="optitle">${o.title}</span>
-                    ${o.detail ? html`<span class="opdetail">${o.detail}</span>` : nothing}
+                    <span class="roptext">
+                      <span class="roptitle">${o.title}</span>
+                      ${o.detail ? html`<span class="ropdetail">${o.detail}</span>` : nothing}
+                    </span>
                   </label>
                 `
               )}
@@ -648,119 +776,138 @@ export class AlexaPanel extends LitElement {
     const p = this._plan!;
     const laid = projectBoard(p.board, this._effectiveGroups(), this._accepted);
     return html`
-      ${laid.rooms.map((r) => this._previewRoom(r))}
-      ${laid.unroomed.length
-        ? this._previewRoom({
-            id: null, name: "No room", in_alexa: false, in_ha: false, preferred_id: null,
-            devices: laid.unroomed,
-          })
-        : nothing}
+      <div class="rooms">
+        ${laid.rooms.map((r) => this._previewRoom(r))}
+        ${laid.unroomed.length
+          ? this._previewRoom(
+              { id: null, name: "Not in a room", in_alexa: false, in_ha: false, preferred_id: null, devices: laid.unroomed },
+              true
+            )
+          : nothing}
+      </div>
     `;
   }
 
-  private _previewRoom(room: BoardRoom): TemplateResult {
+  private _previewRoom(room: BoardRoom, unroomed = false): TemplateResult {
+    const buckets = this._boardBuckets(room.devices);
+    const count = buckets.reduce((n, b) => n + b.devices.length, 0);
+    const tag = unroomed
+      ? html`<span class="rtag">Alexa can't reach these by room</span>`
+      : room._creating
+        ? html`<span class="rtag new">New room</span>`
+        : !room.id && room.in_ha
+          ? html`<span class="rtag">Not in Alexa yet</span>`
+          : room.id && !room.in_ha
+            ? html`<span class="rtag">Only in Alexa</span>`
+            : nothing;
     return html`
-      <section class="room card">
-        <h2 class="rhead">${room.name} <span class="count">${room.devices.length}</span></h2>
-        <div class="kindgrid">
-          ${this._boardBuckets(room.devices).map(
-            (bk) => html`
-              <div class="kindgroup group kind-${bk.kind}">
-                <h3 class="gcap">${bk.label}</h3>
-                <div class="rows">${bk.devices.map((d) => this._previewDeviceRow(d, room))}</div>
-              </div>
-            `
-          )}
-        </div>
+      <section class="room ${unroomed ? "unroomed" : ""}">
+        <header class="roomhead">
+          <h2>${room.name}</h2>
+          <span class="rcount">${count}</span>
+          ${tag}
+        </header>
+        ${count === 0 ? html`<p class="empty">Nothing here yet.</p>` : nothing}
+        ${buckets.map(
+          (bk) => html`
+            <div class="group kind-${bk.kind}">
+              <h3>${bk.label}</h3>
+              ${bk.devices.map((d) => this._deviceRow(d, room))}
+            </div>
+          `
+        )}
       </section>
     `;
   }
 
-  private _previewDeviceRow(d: BoardDevice, room: BoardRoom): TemplateResult {
-    // Badge the manufacturer Alexa reports, verbatim ("Amazon", "Sonos, Inc.", …) — no brand
-    // mapping. Only when it's blank do we fall back to the source-derived generic label.
-    const chip =
-      d.source === "ha"
-        ? `HA · ${DOMAIN_CHIP[d.domain ?? ""] ?? d.domain ?? "HA"}`
-        : d.manufacturer?.trim() || (d.source === "echo" ? "Echo" : "Alexa-only");
+  private _toggleRow(key: string): void {
+    this._openRow = this._openRow === key ? null : key;
+  }
+
+  // A calm, one-glance row: icon, name, one quiet detail line, and the state that matters.
+  // Controls (room, main speaker, remove) live behind a tap, iOS-style.
+  private _deviceRow(d: BoardDevice, room: BoardRoom): TemplateResult {
+    const key = d.endpoint_id ?? d.entity_id ?? d.name;
+    const open = this._openRow === key;
     // The device is rendered under its EFFECTIVE room, so the dropdown reflects that —
     // an HA-area room with no Alexa id yet uses its "#area#" sentinel value.
     const selected = room.id ?? (room.in_ha ? `#area#${room.name}` : "");
-    // Preferred-speaker control: only for a speaker that's a member of a real Alexa room.
     const canBeMain = d.is_speaker && !!d.endpoint_id && !!room.id && !d._removing;
     const isMain = canBeMain && this._effectivePreferred(room) === d.endpoint_id;
-    // Alexa reports the targeting mode as "ALWAYS" (verified live); staging a pick will write
-    // ALWAYS too. (The old "ALL_THE_TIME" spelling was wrong and made every room read "only
-    // when named" even when it already played here by default.)
-    const always =
-      (room.id && room.id in this._userPref ? "ALWAYS" : room.targeting) === "ALWAYS";
-    // Inline delete: never for protected devices (This Device / Audible / the AMP session).
+    // Alexa reports the targeting mode as "ALWAYS"; staging a pick writes ALWAYS too.
+    const always = (room.id && room.id in this._userPref ? "ALWAYS" : room.targeting) === "ALWAYS";
     const rmOp = d.protected ? null : (this._removalOps(d)[0] ?? null);
     const rmStaged = !!rmOp && rmOp.id in this._userRemove;
+    const editable = !!d.endpoint_id || !!rmOp;
+
+    // One quiet line of detail: what's about to change first, then what it is.
+    const detail: TemplateResult[] = [];
+    if (d._removing) detail.push(html`<span class="d-danger">Will be removed</span>`);
+    if (d.endpoint_id) {
+      const from = this._endpointCurrentRoom().get(d.endpoint_id) ?? "";
+      if (from !== selected && !d._removing)
+        detail.push(html`<span class="d-change">Moving from ${from ? this._roomName(from) : "no room"}</span>`);
+      const was = this._deviceName(d.endpoint_id);
+      if (was !== d.name) detail.push(html`<span class="d-change">Was “${was}”</span>`);
+    }
+    if (!d.synced) detail.push(html`<span class="d-change">New to Alexa</span>`);
+    if (d.source === "ha" && d.exposed === false) detail.push(html`<span>Hidden from Alexa</span>`);
+    if (d.speaker_note === "ha_proxy") detail.push(html`<span>Home Assistant only · Alexa can't play here</span>`);
+    if (d.source !== "ha" && d.manufacturer) detail.push(html`<span>${d.manufacturer}</span>`);
+
     return html`
-      <div class="row ${d._removing ? "removing" : ""}">
-        <div class="info">
-          <div class="name ${d._removing ? "strike" : ""}">${d.name}</div>
-          <div class="meta">
-            <span class="kind">${chip}</span>
-            ${d.speaker_note === "ha_proxy"
-              ? html`<span
-                  class="warnpill"
-                  title="This is a copy of the speaker bridged from Home Assistant. Alexa can’t play music to the copy, so pick the matching speaker above (the real one) as the room’s main instead."
-                  >copy · can’t play here</span
-                >`
-              : nothing}
-            ${d.source === "ha" && d.exposed === false ? html`<span class="reason">hidden</span>` : nothing}
-            ${!d.synced ? html`<span class="reason">will sync to Alexa</span>` : nothing}
-            ${d._removing ? html`<span class="reason danger">will be removed</span>` : nothing}
-          </div>
-        </div>
-        ${canBeMain
-          ? isMain
+      <div class="row ${open ? "open" : ""} ${d._removing ? "removing" : ""}">
+        <button class="rowmain" ?disabled=${!editable} aria-expanded=${open} @click=${() => this._toggleRow(key)}>
+          <span class="medal sm">${svgIcon(deviceIcon(d))}</span>
+          <span class="rowtext">
+            <span class="name">${d.name}</span>
+            ${detail.length ? html`<span class="detail">${joinDot(detail)}</span>` : nothing}
+          </span>
+          ${isMain
             ? always
-              ? html`<span class="mainbadge" title="A plain “play music” in this room plays on this speaker">♪ plays here</span>`
-              : html`<span
-                    class="reason"
-                    title="Right now music only comes here when you say the room name, e.g. “play music in ${room.name}”. A plain “play music” plays on whichever Echo you spoke to."
-                    >only if you say “${room.name}”</span
-                  ><button
-                    class="mainbtn warn"
+              ? html`<span class="badge play" title="A plain “play music” in this room plays here">${svgIcon("note")} Plays here</span>`
+              : html`<span class="badge warn" title="Music only plays here when you say the room's name">Only if named</span>`
+            : nothing}
+          ${editable ? svgIcon("chevron", "chev") : nothing}
+        </button>
+        ${open
+          ? html`<div class="rowedit">
+              ${d.endpoint_id && !d._removing
+                ? html`<label class="field">
+                    <span>Room</span>
+                    <select
+                      class="roomsel"
+                      ?disabled=${this._applying}
+                      @change=${(e: Event) => this._onHomeMove(d.endpoint_id as string, (e.target as HTMLSelectElement).value)}
+                    >
+                      <option value="" ?selected=${selected === ""}>No room</option>
+                      ${this._homeRooms().map(
+                        (r) => html`<option value=${r.value} ?selected=${selected === r.value}>${r.name}</option>`
+                      )}
+                    </select>
+                  </label>`
+                : nothing}
+              ${canBeMain && !(isMain && always)
+                ? html`<button
+                    class="chipbtn"
                     ?disabled=${this._applying}
-                    title="Make a plain “play music” in this room play on this speaker by default"
+                    title="Make a plain “play music” in ${room.name} play on this speaker"
                     @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
                   >
-                    always play here
+                    ${svgIcon("note")} ${isMain ? "Always play here" : "Make main speaker"}
                   </button>`
-            : html`<button
-                class="mainbtn"
-                ?disabled=${this._applying}
-                title="Make this the room's speaker for “play music here”"
-                @click=${() => this._onSetPreferred(room.id as string, d.endpoint_id as string)}
-              >
-                make main
-              </button>`
-          : nothing}
-        ${d.endpoint_id && !d._removing
-          ? html`<select
-              class="roomsel"
-              ?disabled=${this._applying}
-              @change=${(e: Event) => this._onHomeMove(d.endpoint_id as string, (e.target as HTMLSelectElement).value)}
-            >
-              <option value="" ?selected=${selected === ""}>(no room)</option>
-              ${this._homeRooms().map(
-                (r) => html`<option value=${r.value} ?selected=${selected === r.value}>${r.name}</option>`
-              )}
-            </select>`
-          : nothing}
-        ${rmOp
-          ? html`<button
-              class="rmbtn ${rmStaged ? "staged" : ""}"
-              ?disabled=${this._applying}
-              title=${rmStaged ? "Keep this device" : "Delete this from Alexa (staged for review)"}
-              @click=${() => this._onRemove(d)}
-            >
-              ${rmStaged ? "keep" : "remove"}
-            </button>`
+                : nothing}
+              ${rmOp
+                ? html`<button
+                    class="chipbtn danger ${rmStaged ? "on" : ""}"
+                    ?disabled=${this._applying}
+                    @click=${() => this._onRemove(d)}
+                  >
+                    ${svgIcon("trash")} ${rmStaged ? "Keep it" : "Remove"}
+                  </button>`
+                : nothing}
+              ${d.protected ? html`<span class="hint">${svgIcon("lock")} Protected — never removed</span>` : nothing}
+            </div>`
           : nothing}
       </div>
     `;
@@ -784,13 +931,11 @@ export class AlexaPanel extends LitElement {
       if (isHaCopy(d) && d.domain === "media_player" && nativeNames.has(nrm(d.name))) continue;
       let key: string, label: string, kind: string, order: number;
       if (d.is_speaker) {
-        // Real, playable Alexa speakers (native — Echo, or Sonos via the Sonos skill). The
-        // per-row chip still shows the maker (Amazon / Sonos, Inc.); the section names the source.
-        [key, label, kind, order] = ["spk_alexa", "From Alexa (playable)", "speakers", 1];
+        // Real, playable Alexa speakers (native — Echo, or Sonos via the Sonos skill).
+        [key, label, kind, order] = ["spk_alexa", "Speakers", "speakers", 1];
       } else if (d.speaker_note === "ha_proxy") {
-        // Home Assistant copies of a speaker — Alexa can't play to them. Grouped + dimmed so
-        // it's obvious they're duplicates from HA, not something to set as the main.
-        [key, label, kind, order] = ["spk_hacopy", "From Home Assistant (copies)", "hacopy", 1.5];
+        // A speaker only Home Assistant knows about — Alexa can't play to it. Dimmed.
+        [key, label, kind, order] = ["spk_hacopy", "Home Assistant only", "hacopy", 1.5];
       } else if (d.source === "echo" || d.source === "alexa") {
         // Non-speaker Alexa devices (a Fire TV, etc.): header = the reported manufacturer,
         // verbatim (fallback to a generic label when blank).
@@ -810,780 +955,755 @@ export class AlexaPanel extends LitElement {
   }
 
   private _statusDisc(s?: string): TemplateResult {
-    if (s === "done") return html`<span class="state done">✓</span>`;
-    if (s === "error") return html`<span class="state error">✗</span>`;
+    if (s === "done") return html`<span class="state done">${svgIcon("check")}</span>`;
+    if (s === "error") return html`<span class="state error">${svgIcon("alert")}</span>`;
     if (s === "running") return html`<span class="state running"></span>`;
     return html`<span class="state pending"></span>`;
   }
 
-
   static override styles = css`
+    /* ── Tokens. Everything rides on Home Assistant's theme variables (so light/dark just
+       work); colour appears only in the kind icons, section labels, and status medal. ── */
     :host {
+      --ao-text: var(--primary-text-color, #1c1c1e);
+      --ao-muted: var(--secondary-text-color, #6e6e73);
+      --ao-card: var(--card-background-color, #fff);
+      --ao-page: var(--primary-background-color, #f2f2f7);
+      --ao-line: var(--divider-color, rgba(0, 0, 0, 0.1));
+      --ao-accent: var(--primary-color, #03a9f4);
+      --ao-ok: var(--success-color, #34a853);
+      --ao-warn: var(--warning-color, #f5a524);
+      --ao-danger: var(--error-color, #e5484d);
+      --ao-radius: 18px;
       display: block;
-      background: var(--primary-background-color, #f5f5f5);
       min-height: 100%;
-      color: var(--primary-text-color, #212121);
+      background: var(--ao-page);
+      color: var(--ao-text);
+      -webkit-font-smoothing: antialiased;
     }
     .wrap {
-      max-width: 900px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 16px 16px 88px;
+      padding: 12px 20px 72px;
       box-sizing: border-box;
     }
-    header {
+    button {
+      font: inherit;
+      color: inherit;
+    }
+    .ic {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+      flex: none;
+    }
+
+    /* ── Header ── */
+    .top {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px 24px;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 8px 4px 16px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 2px 14px;
+    }
+    .brand {
+      width: 38px;
+      height: 38px;
+      flex: none;
+    }
+    .titles {
+      min-width: 0;
+      flex: 1;
     }
     h1 {
       margin: 0;
-      font-size: 1.5rem;
-      font-weight: 600;
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
     .sub {
-      margin: 4px 0 0;
-      max-width: 46ch;
-      color: var(--secondary-text-color, #727272);
-      font-size: 0.85rem;
-      line-height: 1.4;
-    }
-    .actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .chip {
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 999px;
-      white-space: nowrap;
-    }
-    .chip.add {
-      background: color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent);
-      color: var(--success-color, #2e7d32);
-    }
-    .chip.live {
-      background: color-mix(in srgb, var(--warning-color, #ff9800) 20%, transparent);
-      color: var(--warning-color, #e65100);
-    }
-    .chip.ghost {
-      background: var(--divider-color, #e0e0e0);
-      color: var(--secondary-text-color, #616161);
-    }
-    .chip.ok {
-      background: color-mix(in srgb, var(--success-color, #4caf50) 14%, transparent);
-      color: var(--success-color, #2e7d32);
-    }
-    button.apply {
-      border: none;
-      border-radius: 8px;
-      padding: 8px 18px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: var(--primary-color, #03a9f4);
-      color: var(--text-primary-color, #fff);
-    }
-    button.apply:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-    .banner {
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin: 4px 0 12px;
-      font-size: 0.88rem;
-      line-height: 1.4;
-    }
-    .banner.err {
-      background: color-mix(in srgb, var(--error-color, #f44336) 14%, transparent);
-      color: var(--error-color, #c62828);
-    }
-    .banner.warn {
-      background: color-mix(in srgb, var(--warning-color, #ff9800) 16%, transparent);
-      color: var(--warning-color, #e65100);
-    }
-    .link {
-      background: none;
-      border: none;
-      color: inherit;
-      font: inherit;
-      font-weight: 700;
-      text-decoration: underline;
-      cursor: pointer;
-      padding: 0;
-    }
-    section {
-      margin-bottom: 20px;
-    }
-    /* A room is a Chorus-style card; its kind-groups are tinted nested boxes. */
-    section.room.card {
-      margin-bottom: 26px;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-radius: 12px;
-      padding: 12px 14px 14px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    h2 {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--primary-text-color, #212121);
-      margin: 4px 4px 6px;
-    }
-    .room .rhead {
-      margin: 2px 2px 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-    }
-    h3 {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 700;
-      color: var(--secondary-text-color, #727272);
-      margin: 14px 4px 6px;
-    }
-    .kindgroup:first-of-type h3 {
-      margin-top: 6px;
-    }
-    .count {
-      font-weight: 400;
-      opacity: 0.7;
-    }
-    /* Standalone card list (used by the cleanup / device sections). */
-    .rows {
-      background: var(--card-background-color, #fff);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    /* Within a room, each kind is a plain grouped-list section: an uppercase header with a
-       hairline, then its rows. No tinted rounded boxes / colored rails. Masonry packs the
-       sections into ~260px columns (CSS multi-column) so short sections fill the height. */
-    .kindgrid {
-      column-width: 260px;
-      column-gap: 22px;
-    }
-    .room .kindgroup {
-      --kind: var(--secondary-text-color, #6b7280);
-      min-width: 0;
-      margin: 0 0 18px;
-      display: flow-root; /* own block-formatting context — no margin-clip at a column top */
-      -webkit-column-break-inside: avoid;
-      break-inside: avoid; /* keep a section together within a column */
-    }
-    /* Color-coded section header: the kind's color as the LABEL + hairline only — no box,
-       no rail, no tinted fill (that reads as AI-generated). */
-    .room .kindgroup .gcap {
-      color: var(--kind);
-      margin: 0;
-      padding-bottom: 5px;
-      border-bottom: 2px solid color-mix(in srgb, var(--kind) 55%, transparent);
-    }
-    .room .kind-lighting { --kind: #d08700; }
-    .room .kind-speakers { --kind: #2f6fed; }
-    .room .kind-climate  { --kind: #0f9d9d; }
-    .room .kind-scenes   { --kind: #7c4dde; }
-    .room .kind-other    { --kind: #6b7280; }
-    .room .kind-echo     { --kind: #b06f2e; }
-    .room .kind-alexa    { --kind: #9333ea; }
-    .room .kind-hacopy   { --kind: #9aa0a6; }
-    /* HA copies of a speaker: present for clarity, but visibly secondary to the real ones. */
-    .room .kindgroup.kind-hacopy { opacity: 0.7; }
-    .room .kindgroup .rows {
-      background: transparent;
-      border-radius: 0;
-      box-shadow: none;
-      overflow: visible;
-    }
-    .room .kindgroup .row {
-      /* In a narrow masonry column, let the dropdown wrap below the name instead of
-         crushing it — the device name keeps a full line, the room picker drops under it. */
-      flex-wrap: wrap;
-      gap: 4px 10px;
-      padding: 9px 2px;
-    }
-    .room .kindgroup .row:last-child {
-      border-bottom: none;
-    }
-    .room .kindgroup .row .info {
-      flex: 1 1 60%;
-    }
-    .room .kindgroup .roomsel {
-      max-width: 100%;
-      margin-left: auto;
-    }
-    /* Per-device inline controls in the board */
-    .rowctl {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    /* Preferred-speaker control on a speaker row. "make main" to set it; a plain-words
-       badge marks the one that answers "play music here" — no mystery star. */
-    .mainbtn {
-      flex: none;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #666);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .mainbtn:hover {
-      border-color: var(--primary-color, #2f6fed);
-      color: var(--primary-color, #2f6fed);
-    }
-    /* Already the preferred speaker, but only when the room is named — nudge to make it always. */
-    .mainbtn.warn {
-      border-color: color-mix(in srgb, var(--warning-color, #e0a72e) 60%, transparent);
-      color: var(--warning-color, #b8860b);
-    }
-    .mainbadge {
-      flex: none;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: var(--primary-color, #2f6fed);
-      white-space: nowrap;
-    }
-    .rmbtn {
-      flex: none;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #888);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .rmbtn:hover {
-      border-color: var(--error-color, #d33);
-      color: var(--error-color, #d33);
-    }
-    .rmbtn.staged {
-      border-color: var(--error-color, #d33);
-      color: #fff;
-      background: var(--error-color, #d33);
-    }
-    .rm {
-      border: 1px solid var(--divider-color, #d0d0d0);
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #999);
-      border-radius: 8px;
-      padding: 5px 9px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .rm.on {
-      color: #fff;
-      background: var(--error-color, #d33);
-      border-color: var(--error-color, #d33);
-    }
-    .headright {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .viewtoggle {
-      display: inline-flex;
-      border: 1px solid var(--divider-color, #d0d0d0);
-      border-radius: 9px;
-      overflow: hidden;
-    }
-    .viewtoggle button {
-      border: none;
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #777);
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .viewtoggle button.on {
-      background: var(--primary-color, #2f6fed);
-      color: #fff;
-    }
-    /* Plan view: hero status + review sheet */
-    .hero {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      flex-wrap: wrap;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-left: 4px solid var(--primary-color, #2f6fed);
-      border-radius: 12px;
-      padding: 16px 18px;
-      margin-bottom: 18px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    .hero.ok {
-      border-left-color: var(--success-color, #2e7d32);
-      color: var(--success-color, #2e7d32);
-      font-weight: 600;
-    }
-    .hero .tick {
-      font-size: 1.2rem;
-      margin-right: 6px;
-    }
-    .hero .herotext {
-      font-size: 1.05rem;
-    }
-    .hero .herotext strong {
-      font-size: 1.35rem;
-    }
-    .hero .apply {
-      flex-shrink: 0;
-    }
-    .reviewsheet {
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-radius: 12px;
-      padding: 10px 16px 16px;
-      margin-bottom: 18px;
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.1));
-    }
-    .reviewhead {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-      padding-bottom: 8px;
-      margin-bottom: 6px;
-    }
-    .reviewhead h2 {
-      margin: 4px 0;
-    }
-    .reviewgroup {
-      padding: 4px 0;
-      border-bottom: 1px solid var(--divider-color, #f0f0f0);
-    }
-    .grouphead {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 2px;
-    }
-    .grouphead input {
-      width: 17px;
-      height: 17px;
-      flex-shrink: 0;
-    }
-    .grouptitle {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--primary-text-color, #212121);
-      text-align: left;
-    }
-    .reviewgroup.danger .grouptitle {
-      color: var(--error-color, #d33);
-    }
-    .chev {
-      display: inline-block;
-      transition: transform 0.15s ease;
-      opacity: 0.6;
-      font-size: 0.8rem;
-    }
-    .chev.open {
-      transform: rotate(90deg);
-    }
-    .gcount {
-      font-weight: 400;
-      color: var(--secondary-text-color, #888);
+      margin: 1px 0 0;
+      color: var(--ao-muted);
       font-size: 0.85rem;
     }
-    .groupbody {
-      padding: 2px 0 6px 26px;
-    }
-    .reviewop {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 4px;
-      cursor: pointer;
-    }
-    .reviewop input {
-      width: 17px;
-      height: 17px;
-      flex-shrink: 0;
-    }
-    .reviewop .optitle {
-      flex: 1;
-      min-width: 0;
-    }
-    .reviewop .opdetail {
-      color: var(--secondary-text-color, #888);
-      font-size: 0.82rem;
-    }
-    .reviewfoot {
-      display: flex;
-      justify-content: flex-end;
-      padding-top: 12px;
-    }
-    .name.strike {
-      text-decoration: line-through;
-      opacity: 0.6;
-    }
-    .reason.danger {
-      color: var(--error-color, #d33);
-    }
-    .warnpill {
-      color: var(--warning-color, #b76e00);
-      background: color-mix(in srgb, var(--warning-color, #b76e00) 12%, transparent);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #b76e00) 35%, transparent);
-      border-radius: 999px;
-      padding: 0 7px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      cursor: help;
-      white-space: nowrap;
-    }
-    .row.removing {
-      opacity: 0.7;
-    }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--divider-color, #ececec);
-    }
-    .row:last-child {
-      border-bottom: none;
-    }
-    .info {
-      flex: 1;
-      min-width: 0;
-    }
-    .name {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.95rem;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .dot {
-      width: 7px;
-      height: 7px;
+    .iconbtn {
+      width: 38px;
+      height: 38px;
+      flex: none;
+      display: inline-grid;
+      place-items: center;
+      border: none;
       border-radius: 50%;
-      background: var(--primary-color, #03a9f4);
-      flex: none;
-    }
-    .meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.78rem;
-      color: var(--secondary-text-color, #727272);
-      margin-top: 3px;
-    }
-    .kind {
-      font-size: 0.68rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: var(--divider-color, #e8e8e8);
-      color: var(--secondary-text-color, #616161);
-    }
-    .reason.label {
-      color: var(--primary-color, #0288d1);
-      font-weight: 600;
-    }
-    button.toggle {
-      flex: none;
-      width: 54px;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      border-radius: 999px;
-      padding: 5px 0;
-      font-size: 0.8rem;
-      font-weight: 700;
+      background: transparent;
+      color: var(--ao-muted);
       cursor: pointer;
-      background: var(--card-background-color, #fff);
-      color: var(--secondary-text-color, #9e9e9e);
     }
-    button.toggle.on {
-      background: var(--primary-color, #03a9f4);
-      color: var(--text-primary-color, #fff);
-      border-color: var(--primary-color, #03a9f4);
+    .iconbtn:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--ao-text) 8%, transparent);
+      color: var(--ao-text);
     }
-    button.toggle:disabled {
-      opacity: 0.6;
+    .iconbtn:disabled {
+      opacity: 0.4;
       cursor: default;
     }
-    .row.ghost {
-      opacity: 0.72;
+
+    /* ── Status hero: sticky, so Sync is always one tap away ── */
+    .hero {
+      position: sticky;
+      top: 8px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding: 16px 18px;
+      background: var(--ao-card);
+      border: 1px solid var(--ao-line);
+      border-radius: var(--ao-radius);
+      box-shadow: 0 6px 24px -12px rgba(0, 0, 0, 0.25);
     }
-    .row.ghost .name {
-      font-family: var(--code-font-family, monospace);
-      font-size: 0.82rem;
-      font-weight: 400;
+    .herotext {
+      flex: 1;
+      min-width: 0;
     }
-    .tag {
+    .herotitle {
+      font-size: 1.08rem;
+      font-weight: 650;
+      letter-spacing: -0.005em;
+    }
+    .herosub {
+      margin-top: 2px;
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+    }
+    .progress {
+      height: 6px;
+      margin-top: 10px;
+      border-radius: 99px;
+      background: var(--ao-line);
+      overflow: hidden;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--ao-accent);
+      transition: width 0.4s ease;
+    }
+    /* The medal: an icon in a soft disc of its own colour. Used by the hero (large) and
+       every device row (small, in its kind's colour). */
+    .medal {
+      --c: var(--kind, var(--ao-muted));
+      width: 46px;
+      height: 46px;
       flex: none;
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 3px 9px;
-      border-radius: 999px;
-      background: var(--divider-color, #e0e0e0);
-      color: var(--secondary-text-color, #616161);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--c);
+      background: color-mix(in srgb, var(--c) 15%, transparent);
     }
-    .muted {
-      color: var(--secondary-text-color, #727272);
-      font-size: 0.82rem;
-      line-height: 1.4;
-      margin: 0 4px 8px;
+    .medal .ic {
+      width: 26px;
+      height: 26px;
     }
-    .alexa-exp {
-      margin-top: 22px;
+    .medal.m-ok {
+      --c: var(--ao-ok);
     }
-    .exp-divider {
-      margin-top: 34px;
-      padding-top: 18px;
-      border-top: 2px solid var(--divider-color, #ddd);
+    .medal.m-accent {
+      --c: var(--ao-accent);
     }
-    .exp-heading {
+    .medal.m-warn {
+      --c: var(--ao-warn);
+    }
+    .medalnum {
       font-size: 1.15rem;
       font-weight: 700;
-      margin: 0 4px 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
-    .exp {
-      font-size: 0.58rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-      background: var(--warning-color, #ff9800);
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
-      vertical-align: 2px;
+    .medal.sm {
+      width: 34px;
+      height: 34px;
     }
-    .ghostbtn {
-      background: var(--secondary-background-color, #e0e0e0) !important;
-      color: var(--primary-text-color, #212121) !important;
+    .medal.sm .ic {
+      width: 19px;
+      height: 19px;
     }
-    .applybar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 10px 0 14px;
+    .hero.celebrate .medal {
+      animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
     }
-    .chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+    .hero.celebrate .herotitle {
+      color: var(--ao-ok);
     }
-    .applybtns {
-      display: flex;
-      gap: 8px;
-      margin-left: auto;
-      align-items: center;
-    }
-    .minus {
-      flex: none;
-      width: 14px;
-      text-align: center;
-      font-weight: 700;
-      color: var(--error-color, #c62828);
-    }
-    .tag.remove {
-      background: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
-      color: var(--error-color, #c62828);
-    }
-    button.toggle.rem {
-      width: auto;
-      padding: 5px 12px;
-      background: var(--error-color, #c62828);
-      color: #fff;
-      border-color: var(--error-color, #c62828);
-    }
-    button.toggle.keepbtn {
-      width: auto;
-      padding: 5px 12px;
-    }
-    .row.removing .name {
-      color: var(--error-color, #c62828);
-    }
-    .roomsel {
-      flex: none;
-      max-width: 190px;
-      padding: 5px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--divider-color, #cfcfcf);
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color, #212121);
-      font: inherit;
-      font-size: 0.85rem;
-    }
-    .row.moving {
-      background: color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent);
-    }
-    .row.moving .name {
-      color: var(--primary-color, #0288d1);
-    }
-    .deltabar {
-      position: fixed;
-      bottom: 16px;
-      /* Centered on the tool (host), not the viewport — set from JS. */
-      left: var(--ac-bar-left, 50%);
-      transform: translateX(-50%);
-      width: var(--ac-bar-width, min(680px, calc(100vw - 32px)));
-      z-index: 20;
-      overflow: hidden;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color, #ddd);
-      border-radius: 14px;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-    }
-    .deltabar .flare {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(
-        100deg,
-        transparent 35%,
-        color-mix(in srgb, var(--primary-color, #03a9f4) 22%, transparent) 50%,
-        color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent) 60%,
-        transparent 72%
-      );
-      background-size: 220% 100%;
-      animation: flare-sweep 3s linear infinite;
-    }
-    .deltabar.busy .flare {
-      animation-duration: 1.1s;
-    }
-    @keyframes flare-sweep {
-      from {
-        background-position: 220% 0;
+    @keyframes pop {
+      0% {
+        transform: scale(0.55);
       }
-      to {
-        background-position: -120% 0;
+      100% {
+        transform: scale(1);
       }
     }
-    @media (prefers-reduced-motion: reduce) {
-      .deltabar .flare {
-        animation: none;
-      }
-    }
-    .deltabar-inner {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 10px 14px;
-    }
-    .delta-count {
-      font-weight: 600;
-      font-size: 0.95rem;
-    }
-    .headernote {
-      align-self: center;
-    }
-    .deltadetails {
-      position: relative;
-      max-height: 42vh;
-      overflow-y: auto;
-      padding: 6px 14px 12px;
-      border-top: 1px solid var(--divider-color, #eee);
-    }
-    .dline {
-      font-size: 0.82rem;
-      padding: 3px 0;
-      display: flex;
-      gap: 6px;
-      align-items: baseline;
-    }
-    .plus {
-      color: var(--success-color, #2e7d32);
-      font-weight: 700;
-      width: 14px;
-      text-align: center;
-      flex: none;
-    }
-    .state {
-      flex: none;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.7rem;
-      font-weight: 700;
-      line-height: 1;
-      box-sizing: border-box;
-    }
-    .state.pending {
-      width: 8px;
-      height: 8px;
-      margin: 0 5px;
-      background: var(--divider-color, #cfcfcf);
-    }
-    .state.running {
-      border: 2px solid var(--divider-color, #ddd);
-      border-top-color: var(--primary-color, #03a9f4);
-      animation: spin 0.7s linear infinite;
-    }
-    .state.done {
-      background: var(--success-color, #2e7d32);
-      color: #fff;
-    }
-    .state.error {
-      background: var(--error-color, #c62828);
-      color: #fff;
+    .spin {
+      animation: spin 1.1s linear infinite;
     }
     @keyframes spin {
       to {
         transform: rotate(360deg);
       }
     }
-    .rows.scroll {
-      max-height: 240px;
+
+    /* ── Buttons ── */
+    .primary {
+      flex: none;
+      border: none;
+      border-radius: 99px;
+      padding: 10px 20px;
+      font-size: 0.92rem;
+      font-weight: 650;
+      background: var(--ao-accent);
+      color: var(--text-primary-color, #fff);
+      cursor: pointer;
+      box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--ao-accent) 80%, transparent);
+    }
+    .primary:hover:not(:disabled) {
+      filter: brightness(1.06);
+    }
+    .primary:disabled {
+      opacity: 0.45;
+      cursor: default;
+      box-shadow: none;
+    }
+    .primary.wide {
+      width: 100%;
+      padding: 13px 20px;
+      font-size: 1rem;
+    }
+    .chipbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--ao-line);
+      border-radius: 99px;
+      padding: 6px 13px 6px 10px;
+      background: var(--ao-card);
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .chipbtn .ic {
+      width: 17px;
+      height: 17px;
+    }
+    .chipbtn:hover:not(:disabled) {
+      border-color: var(--ao-accent);
+      color: var(--ao-accent);
+    }
+    .chipbtn.danger:hover:not(:disabled) {
+      border-color: var(--ao-danger);
+      color: var(--ao-danger);
+    }
+    .chipbtn.danger.on {
+      background: var(--ao-danger);
+      border-color: var(--ao-danger);
+      color: #fff;
+    }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--ao-accent);
+      outline-offset: 2px;
+    }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin: -4px 0 18px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--ao-warn) 13%, transparent);
+      color: var(--ao-text);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .notice .ic {
+      color: var(--ao-warn);
+    }
+
+    /* ── Rooms: cards packed into columns (masonry) ── */
+    .rooms {
+      columns: 360px;
+      column-gap: 16px;
+    }
+    .room {
+      display: flow-root;
+      break-inside: avoid;
+      margin: 0 0 16px;
+      padding: 16px 12px 8px;
+      background: var(--ao-card);
+      border: 1px solid var(--ao-line);
+      border-radius: var(--ao-radius);
+    }
+    .room.unroomed {
+      background: transparent;
+      border-style: dashed;
+    }
+    .roomhead {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      padding: 0 6px 4px;
+    }
+    .roomhead h2 {
+      margin: 0;
+      font-size: 1.12rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .rcount {
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rtag {
+      margin-left: auto;
+      color: var(--ao-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .rtag.new {
+      color: var(--ao-accent);
+    }
+    .empty {
+      margin: 6px 6px 10px;
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Kind sections: a coloured label + hairline. No tinted boxes, no rails. */
+    .group {
+      --kind: var(--ao-muted);
+    }
+    .group h3 {
+      margin: 12px 6px 2px;
+      padding-bottom: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--kind);
+      border-bottom: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
+    }
+    .kind-lighting { --kind: #d08700; }
+    .kind-speakers { --kind: #2f6fed; }
+    .kind-media    { --kind: #d0457d; }
+    .kind-climate  { --kind: #0f9d9d; }
+    .kind-scenes   { --kind: #7c4dde; }
+    .kind-other    { --kind: #6b7280; }
+    .kind-echo     { --kind: #b06f2e; }
+    .kind-alexa    { --kind: #9333ea; }
+    .kind-hacopy   { --kind: #8e949c; }
+    .group.kind-hacopy {
+      opacity: 0.7;
+    }
+
+    /* ── Device rows: calm by default; tap to edit ── */
+    .row {
+      border-radius: 14px;
+    }
+    .row.open {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rowmain {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 8px 6px;
+      border: none;
+      border-radius: 14px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rowmain:disabled {
+      cursor: default;
+    }
+    .rowmain:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rowtext {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .name {
+      font-size: 0.95rem;
+      font-weight: 550;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .detail {
+      margin-top: 1px;
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .d-change {
+      color: var(--ao-accent);
+      font-weight: 600;
+    }
+    .d-danger {
+      color: var(--ao-danger);
+      font-weight: 600;
+    }
+    .row.removing .name {
+      text-decoration: line-through;
+      color: var(--ao-muted);
+    }
+    .row.removing .medal {
+      filter: grayscale(1);
+      opacity: 0.6;
+    }
+    .chev {
+      width: 20px;
+      height: 20px;
+      color: var(--ao-muted);
+      opacity: 0.55;
+      transition: transform 0.2s ease;
+    }
+    .open > .rowmain .chev,
+    .rgroup.open .rgtitle .chev {
+      transform: rotate(180deg);
+    }
+    /* With a mouse, rows stay calm: the disclosure chevron appears on hover (and stays on the
+       open row). Touch screens keep it visible so rows still read as tappable. */
+    @media (hover: hover) {
+      .rowmain .chev {
+        opacity: 0;
+        transition: opacity 0.15s ease, transform 0.2s ease;
+      }
+      .rowmain:hover .chev,
+      .rowmain:focus-visible .chev,
+      .row.open .rowmain .chev {
+        opacity: 0.55;
+      }
+    }
+    .badge {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 9px 3px 7px;
+      border-radius: 99px;
+      font-size: 0.74rem;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .badge .ic {
+      width: 14px;
+      height: 14px;
+    }
+    .badge.play {
+      color: #2f6fed;
+      background: color-mix(in srgb, #2f6fed 13%, transparent);
+    }
+    .badge.warn {
+      padding-left: 9px;
+      color: var(--ao-warn);
+      background: color-mix(in srgb, var(--ao-warn) 15%, transparent);
+    }
+    .rowedit {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      padding: 2px 10px 12px 52px;
+    }
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.84rem;
+      color: var(--ao-muted);
+      font-weight: 600;
+    }
+    .roomsel {
+      max-width: 220px;
+      padding: 6px 10px;
+      border: 1px solid var(--ao-line);
+      border-radius: 10px;
+      background: var(--ao-card);
+      color: var(--ao-text);
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+    }
+    .hint .ic {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ── Review sheet ── */
+    .scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.42);
+      animation: fade 0.18s ease;
+    }
+    .sheet {
+      position: fixed;
+      z-index: 11;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(640px, calc(100vw - 32px));
+      max-height: min(82vh, 780px);
+      display: flex;
+      flex-direction: column;
+      background: var(--ao-card);
+      border-radius: 22px;
+      box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.45);
+      animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    .sheethead {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 20px 20px 12px 24px;
+      border-bottom: 1px solid var(--ao-line);
+    }
+    .sheethead > div {
+      flex: 1;
+    }
+    .sheethead h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .sheetbody {
       overflow-y: auto;
-      margin-top: 4px;
+      padding: 6px 12px;
     }
-    code {
-      background: var(--divider-color, #eee);
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 0.85em;
+    .sheetfoot {
+      padding: 14px 20px 20px;
+      border-top: 1px solid var(--ao-line);
     }
-    [hidden] {
-      display: none !important;
+    .rgroup {
+      border-bottom: 1px solid var(--ao-line);
+    }
+    .rgroup:last-child {
+      border-bottom: none;
+    }
+    .rghead {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px 6px 12px;
+    }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      margin: 0;
+      accent-color: var(--ao-accent);
+    }
+    .rgtitle {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 6px;
+      border: none;
+      border-radius: 10px;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rgtitle:hover {
+      background: color-mix(in srgb, var(--ao-text) 4%, transparent);
+    }
+    .rgicon {
+      display: inline-grid;
+      color: var(--ao-accent);
+    }
+    .rgroup.danger .rgicon,
+    .rgroup.danger .rgname {
+      color: var(--ao-danger);
+    }
+    .rgname {
+      flex: 1;
+      font-weight: 650;
+    }
+    .rgcount {
+      color: var(--ao-muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rgbody {
+      padding: 0 8px 10px 40px;
+    }
+    .rop {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px;
+      cursor: pointer;
+    }
+    .roptext {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .roptitle {
+      font-size: 0.9rem;
+    }
+    .ropdetail {
+      color: var(--ao-muted);
+      font-size: 0.8rem;
+    }
+    .state {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      box-sizing: border-box;
+    }
+    .state .ic {
+      width: 18px;
+      height: 18px;
+    }
+    .state.pending::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ao-line);
+    }
+    .state.running {
+      border: 2px solid var(--ao-line);
+      border-top-color: var(--ao-accent);
+      animation: spin 0.7s linear infinite;
+    }
+    .state.done {
+      color: var(--ao-ok);
+    }
+    .state.error {
+      color: var(--ao-danger);
+    }
+    @keyframes fade {
+      from {
+        opacity: 0;
+      }
+    }
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -46%);
+      }
+    }
+
+    /* ── Loading skeleton ── */
+    .skel {
+      border-radius: 8px;
+      background: linear-gradient(90deg, var(--ao-line) 25%, color-mix(in srgb, var(--ao-line) 45%, transparent) 50%, var(--ao-line) 75%);
+      background-size: 300% 100%;
+      animation: shimmer 1.4s ease infinite;
+    }
+    .skel-medal {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+    }
+    .skel-title {
+      width: 40%;
+      height: 16px;
+      margin: 4px 6px 12px;
+    }
+    .herotext .skel-title {
+      width: 50%;
+      margin: 0 0 8px;
+    }
+    .skel-line {
+      flex: 1;
+      height: 12px;
+    }
+    .skel-line.short {
+      width: 30%;
+      flex: none;
+    }
+    .skel-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 6px;
+    }
+    .skel-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+    }
+    @keyframes shimmer {
+      from {
+        background-position: 100% 0;
+      }
+      to {
+        background-position: 0 0;
+      }
+    }
+
+    /* ── Phones ── */
+    @media (max-width: 600px) {
+      .wrap {
+        padding: 6px 10px 64px;
+      }
+      .hero {
+        flex-wrap: wrap;
+        padding: 14px;
+      }
+      .hero .primary {
+        width: 100%;
+      }
+      .sheet {
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: 100%;
+        transform: none;
+        max-height: 88vh;
+        border-radius: 22px 22px 0 0;
+        animation: slideup 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+      }
+      .rowedit {
+        padding-left: 10px;
+      }
+    }
+    @keyframes slideup {
+      from {
+        transform: translateY(100%);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
     }
   `;
 }
