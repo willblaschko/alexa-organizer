@@ -503,7 +503,7 @@ def test_ha_copy_merges_into_its_native_twin():
     devs = _rooms(board)["Bedroom"]["devices"]
     assert [d["endpoint_id"] for d in devs] == ["e1"]  # one row, not two
     assert devs[0]["is_speaker"] is True and devs[0]["speaker_note"] is None
-    assert devs[0]["twins"] == [{"endpoint_id": "e2", "room_id": "g1"}]
+    assert devs[0]["twins"] == [{"endpoint_id": "e2", "room_id": "g1", "plays": False}]
     assert devs[0]["twin_entity_id"] == "media_player.bedroom"
 
 
@@ -629,3 +629,38 @@ def test_board_same_named_sonos_and_echo_both_stay_selectable():
     )
     devs = {d["endpoint_id"]: d for d in _rooms(board)["Bedroom"]["devices"]}
     assert devs["e1"]["is_speaker"] and devs["e2"]["is_speaker"]  # both remain main-able
+
+
+# ── "turn on <room>" must not start music ─────────────────────────────────────────
+def test_board_marks_a_copy_that_plays_on_turn_on():
+    # HA's Sonos entity has no power support, so Alexa's "turn on" becomes "play" for it.
+    board = ac.build_board(
+        [],
+        [
+            _ep("n1", "Kitchen", "ALEXA_VOICE_ENABLED", device_type="A15", manufacturer="Sonos, Inc."),
+            _ep("h1", "Kitchen", "SPEAKER", manufacturer="Home Assistant",
+                description="media_player.kitchen via Home Assistant"),
+        ],
+        [_bgroup("g1", "Kitchen", member_ids=["n1", "h1"])],
+        turn_on_plays={"media_player.kitchen"},
+    )
+    (d,) = _rooms(board)["Kitchen"]["devices"]
+    assert d["twins"] == [{"endpoint_id": "h1", "room_id": "g1", "plays": True}]
+
+
+def test_plan_pulls_a_playing_copy_out_of_its_room():
+    sonos = _bdev("Kitchen", "echo", endpoint_id="n1", room_id="k")
+    sonos["twins"] = [{"endpoint_id": "h1", "room_id": "k", "plays": True}]
+    plan = ac.assemble_plan({"rooms": [_broom("k", "Kitchen", [sonos])], "unroomed": []}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert [o["action"] for o in ops] == [{"kind": "move", "endpoint_id": "h1", "from": "k", "to": ""}]
+    assert "music" in ops[0]["detail"]
+
+
+def test_plan_keeps_an_ha_player_that_plays_on_turn_on_out_of_rooms():
+    # Not merged (no native twin), but same rule: out of the room, never placed back in.
+    spk = _bdev("Den Speaker", "ha", endpoint_id="e1", room_id="d", area="Den")
+    spk["domain"], spk["turn_on_plays"] = "media_player", True
+    plan = ac.assemble_plan({"rooms": [_broom("d", "Den", [spk])], "unroomed": []}, [], [])
+    ops = _groups(plan)["place"]["ops"]
+    assert [o["action"] for o in ops] == [{"kind": "move", "endpoint_id": "e1", "from": "d", "to": ""}]

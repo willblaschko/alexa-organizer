@@ -604,7 +604,7 @@ def _ha_entity_of(description: str | None) -> str | None:
     return None
 
 
-def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
+def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None, turn_on_plays=None):
     """Join HA exposure + Alexa endpoints + Alexa groups into a room-centric board.
 
     PURE. Args are plain dicts already fetched by the caller:
@@ -615,12 +615,16 @@ def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
       ha_serials — {HA entity_id: Echo serial} for HA entities that ARE an Echo (via the
                    Alexa Media Player integration's device identifiers). Lets an HA copy be
                    joined to its Echo by serial — survives renames, unlike names.
+      turn_on_plays — HA media_player entity_ids that Alexa would PLAY on "turn on" (no
+                   power support, so HA's Alexa bridge maps TurnOn → media_play). Such a
+                   player must not be a room member, or "turn on <room>" starts its music.
 
     Returns {rooms: [...], unroomed: [...]}. Each device row carries a `source`
     ("ha" | "alexa" | "echo") and the ids each inline action needs.
     """
     live_ids = live_ids or set()
     ha_serials = ha_serials or {}
+    turn_on_plays = turn_on_plays or set()
     eps = [_endpoint_view(e) for e in endpoints]
 
     # Alexa group membership + preferred speaker per room.
@@ -720,6 +724,8 @@ def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
             row["area"] = ha.get("area")
         elif dup and not prot:
             row["suggested_remove"] = True  # confident cruft signal (never for protected names)
+        ent = e.get("ha_entity") or row.get("entity_id")
+        row["turn_on_plays"] = bool(ent and ent in turn_on_plays)
         return row
 
     ep_rows = [device_row(e) for e in eps]
@@ -746,7 +752,8 @@ def build_board(ha_rows, endpoints, groups, live_ids=None, ha_serials=None):
                 native = by_name[0] if len(by_name) == 1 else None
             if native is not None:
                 native.setdefault("twins", []).append(
-                    {"endpoint_id": r["endpoint_id"], "room_id": r["room_id"]}
+                    {"endpoint_id": r["endpoint_id"], "room_id": r["room_id"],
+                     "plays": bool(r.get("turn_on_plays"))}  # plays on "turn on" → keep out of rooms
                 )
                 # Protection follows the DEVICE: a copy named "This Device" protects the phone
                 # it belongs to, whatever the native is called ("Will's Device").
@@ -965,14 +972,16 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
         eid = d.get("endpoint_id")
         if not eid:
             continue  # not in Alexa yet — nothing to move
-        # Action devices (vacuums …) stay exposed for direct voice control but must NOT be
-        # room members, or "turn on <room>" starts them. Pull them out of any room.
-        if d.get("domain") in _NO_ROOM_DOMAINS:
+        # Action devices stay exposed for direct voice control but must NOT be room members,
+        # or "turn on <room>" starts them: vacuums (start cleaning), and HA media players with
+        # no power support (HA's Alexa bridge turns "turn on" into "play" — music resumes).
+        if d.get("domain") in _NO_ROOM_DOMAINS or d.get("turn_on_plays"):
             if d.get("room_id"):
                 g["place"].append({
                     "id": f"move:{eid}", "group": "place",
                     "title": f"Keep {d.get('name')} out of rooms",
-                    "detail": "so “turn on the room” won't start it",
+                    "detail": "so “turn on the room” won't start its music"
+                    if d.get("turn_on_plays") else "so “turn on the room” won't start it",
                     "suggested": True, "destructive": False,
                     "action": {"kind": "move", "endpoint_id": eid, "from": d.get("room_id"), "to": ""},
                 })
@@ -1019,6 +1028,19 @@ def assemble_plan(board: dict, rows: list[dict], room_ops: list[dict]) -> dict:
         if not eid or eid in moving:
             continue
         for t in d.get("twins") or []:
+            if t.get("plays"):
+                # A copy that would PLAY on "turn on" belongs in no room at all (the device
+                # itself keeps the room, and "play music" still goes to it).
+                if t["room_id"]:
+                    g["place"].append({
+                        "id": f"move:{t['endpoint_id']}", "group": "place",
+                        "title": f"Keep {d.get('name')}'s Home Assistant copy out of rooms",
+                        "detail": "so “turn on the room” won't start its music",
+                        "suggested": True, "destructive": False,
+                        "action": {"kind": "move", "endpoint_id": t["endpoint_id"],
+                                   "from": t["room_id"], "to": ""},
+                    })
+                continue
             if t["room_id"] == d.get("room_id"):
                 continue
             if d.get("room_id"):
@@ -1123,6 +1145,20 @@ def _ha_echo_serials(hass, endpoints: list[dict]) -> dict[str, str]:
     return out
 
 
+def _media_players_that_play_on_turn_on(hass) -> set[str]:
+    """HA media players Alexa would PLAY when told to "turn on": no TURN_ON/TURN_OFF support,
+    so HA's Alexa bridge maps TurnOn → media_play (homeassistant/components/alexa/handlers.py).
+    A Sonos from HA's Sonos integration is one — in an Alexa room, "turn on <room>" resumes it."""
+    from homeassistant.components.media_player import MediaPlayerEntityFeature
+
+    power = MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
+    return {
+        s.entity_id
+        for s in hass.states.async_all("media_player")
+        if not int(s.attributes.get("supported_features", 0)) & power
+    }
+
+
 async def async_plan(hass, email: str | None = None) -> dict:
     """The whole opinion, computed once: the board + the grouped change list.
 
@@ -1152,7 +1188,11 @@ async def async_plan(hass, email: str | None = None) -> dict:
     except AlexaCloudUnavailable:
         groups, endpoints, alexa_ok = [], [], False
 
-    board = build_board(rows, endpoints, groups, ha_serials=_ha_echo_serials(hass, endpoints))
+    board = build_board(
+        rows, endpoints, groups,
+        ha_serials=_ha_echo_serials(hass, endpoints),
+        turn_on_plays=_media_players_that_play_on_turn_on(hass),
+    )
     room_ops = plan_room_sync(ha_area_names(hass), groups) if alexa_ok else []
     plan = assemble_plan(board, rows, room_ops)
     return {"available": alexa_ok, "board": board, **plan}

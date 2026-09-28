@@ -172,7 +172,7 @@ export class AlexaPanel extends LitElement {
   }
 
   // The other Alexa endpoints of the same physical device (its HA copy), from the pristine board.
-  private _twinsOf(endpointId: string): { endpoint_id: string; room_id: string | null }[] {
+  private _twinsOf(endpointId: string): { endpoint_id: string; room_id: string | null; plays?: boolean }[] {
     const b = this._plan?.board;
     for (const d of [...(b?.rooms ?? []).flatMap((r) => r.devices), ...(b?.unroomed ?? [])])
       if (d.endpoint_id === endpointId) return d.twins ?? [];
@@ -527,8 +527,12 @@ export class AlexaPanel extends LitElement {
                 // two never split (skip a twin that's already there).
                 return (async () => {
                   await move(a.endpoint_id, a.from);
-                  for (const t of this._twinsOf(a.endpoint_id as string))
-                    if ((t.room_id ?? "") !== to) await move(t.endpoint_id, t.room_id);
+                  for (const t of this._twinsOf(a.endpoint_id as string)) {
+                    // A copy that would start its music on "turn on" stays out of every room.
+                    if (t.plays) {
+                      if (t.room_id) await svc("move_device", { endpoint_id: t.endpoint_id, from: t.room_id });
+                    } else if ((t.room_id ?? "") !== to) await move(t.endpoint_id, t.room_id);
+                  }
                 })();
               })
             )

@@ -15,7 +15,7 @@ export interface BoardDevice {
   category?: string; // Alexa display category (LIGHT, TV, ALEXA_VOICE_ENABLED, …) — for the icon
   // The same physical device's Home Assistant copy (a separate Alexa endpoint), folded into
   // this row. Every action on the device fans out to these too.
-  twins?: { endpoint_id: string; room_id: string | null }[];
+  twins?: { endpoint_id: string; room_id: string | null; plays?: boolean }[]; // plays = starts music on "turn on"
   twin_entity_id?: string | null; // the HA entity behind the copy (so "remove" can un-expose it)
   speaker_note?: string | null; // "ha_proxy" = a would-be speaker Alexa can't play to (HA copy)
   is_preferred: boolean;
